@@ -67,6 +67,11 @@
               <option value="{{ me.id }}"
                       data-empresa="{{ me.empresa.nombre if me.empresa else '' }}"
                       data-centro="{{ me.centro_trabajo.nombre if me.centro_trabajo else '' }}"
+                      data-inicio-jornada="{{ me.inicio_jornada or '' }}"
+                      data-inicio-pausa="{{ me.inicio_pausa or '' }}"
+                      data-fin-pausa="{{ me.fin_pausa or '' }}"
+                      data-fin-jornada="{{ me.fin_jornada or '' }}"
+                      data-dias-laborables="{{ (me.dias_laborables_habituales or []) | tojson }}"
                       selected>
                 {{ me.apellidos }}, {{ me.nombre }} ({{ me.nif }})
               </option>
@@ -83,7 +88,12 @@
                   {% for e in empleados_lista %}
                   <option value="{{ e.id }}"
                           data-empresa="{{ e.empresa.nombre if e.empresa else '' }}"
-                          data-centro="{{ e.centro_trabajo.nombre if e.centro_trabajo else '' }}">
+                          data-centro="{{ e.centro_trabajo.nombre if e.centro_trabajo else '' }}"
+                          data-inicio-jornada="{{ e.inicio_jornada or '' }}"
+                          data-inicio-pausa="{{ e.inicio_pausa or '' }}"
+                          data-fin-pausa="{{ e.fin_pausa or '' }}"
+                          data-fin-jornada="{{ e.fin_jornada or '' }}"
+                          data-dias-laborables="{{ (e.dias_laborables_habituales or []) | tojson }}">
                     {{ e.apellidos }}, {{ e.nombre }} ({{ e.nif }})
                   </option>
                   {% endfor %}
@@ -430,11 +440,37 @@ function diasLaborables() {
 }
 
 // ── Empleado ────────────────────────────────────────────────────────────────
+function aplicarHorarioHabitual(opt) {
+  // Solo pisa el input si el data-* trae un valor; deja intacto lo demas.
+  const ij = opt.dataset.inicioJornada;
+  const ip = opt.dataset.inicioPausa;
+  const fp = opt.dataset.finPausa;
+  const fj = opt.dataset.finJornada;
+  if (ij) $("#inicio_jornada").value = ij;
+  if (ip) $("#inicio_pausa").value   = ip;
+  if (fp) $("#fin_pausa").value      = fp;
+  if (fj) $("#fin_jornada").value    = fj;
+
+  const diasJson = opt.dataset.diasLaborables;
+  if (diasJson && diasJson !== "[]") {
+    try {
+      const labs = JSON.parse(diasJson);
+      if (Array.isArray(labs) && labs.length > 0) {
+        $$(".dia").forEach(b => {
+          b.classList.toggle("is-on", labs.includes(parseInt(b.dataset.dia)));
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+}
+
 $("#empleado").addEventListener("change", (e) => {
   const opt = e.target.selectedOptions[0];
   if (opt && opt.value) {
     $("#empleadoInfo").textContent = `${opt.dataset.empresa} · ${opt.dataset.centro}`;
     $("#previewEmpleado").textContent = opt.text.split(",")[0];
+    aplicarHorarioHabitual(opt);
+    refrescarCalendario();
   } else {
     $("#empleadoInfo").textContent = "Selecciona un empleado";
     $("#previewEmpleado").textContent = "—";

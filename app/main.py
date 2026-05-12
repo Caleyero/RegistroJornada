@@ -41,12 +41,24 @@ Base.metadata.create_all(bind=engine)
 
 # Migración idempotente para BBDDs preexistentes: añadir columnas que no estén.
 with engine.begin() as conn:
-    cols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(registros)")}
-    if "overrides_horario" not in cols:
+    cols_reg = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(registros)")}
+    if "overrides_horario" not in cols_reg:
         conn.exec_driver_sql(
             "ALTER TABLE registros ADD COLUMN overrides_horario JSON "
             "NOT NULL DEFAULT '{}'"
         )
+
+    # Horario habitual + dias laborables habituales en empleados
+    cols_emp = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(empleados)")}
+    for col, ddl in (
+        ("inicio_jornada", "VARCHAR(5)"),
+        ("inicio_pausa", "VARCHAR(5)"),
+        ("fin_pausa", "VARCHAR(5)"),
+        ("fin_jornada", "VARCHAR(5)"),
+        ("dias_laborables_habituales", "JSON"),
+    ):
+        if col not in cols_emp:
+            conn.exec_driver_sql(f"ALTER TABLE empleados ADD COLUMN {col} {ddl}")
 
 
 def _bootstrap_admin() -> None:

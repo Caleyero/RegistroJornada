@@ -135,11 +135,80 @@
             </div>
         </div>
     </div>
-    <div class="panel__foot">
-        <a href="/empleados" class="btn btn--ghost">CANCELAR</a>
-        <button class="btn btn--primary" type="submit" {% if not empresas or not centros %}disabled{% endif %}>
-            {% if empleado %}GUARDAR CAMBIOS{% else %}CREAR EMPLEADO{% endif %}
-        </button>
+
+    {# ────────────────────────────────────────────────────────────── #}
+    {# Horario habitual: se usa como prefill del wizard mensual.      #}
+    {# Cualquier campo puede quedar vacío para soportar jornadas      #}
+    {# parciales (solo mañana) o continuas (sin pausa).               #}
+    {# ────────────────────────────────────────────────────────────── #}
+    {% set dias_lab = (empleado.dias_laborables_habituales if empleado else None) or [] %}
+    <div class="panel" style="margin-top: 14px;">
+        <div class="panel__head">
+            <span class="panel__title">HORARIO HABITUAL (opcional)</span>
+        </div>
+        <div class="panel__body">
+            <p class="sub" style="margin: 0 0 12px;">
+                Estos valores se cargarán por defecto al generar un registro mensual.
+                Puedes dejar campos vacíos si el empleado tiene jornada continua o solo
+                trabaja por la mañana.
+            </p>
+
+            <div class="grid grid-2 mb-2">
+                <div class="field">
+                    <span class="field__label">Rango de mañana</span>
+                    <div class="horario-rango">
+                        <span class="horario__label">DE</span>
+                        <input name="inicio_jornada" type="time" class="input"
+                               value="{{ empleado.inicio_jornada if empleado and empleado.inicio_jornada else '' }}">
+                        <span class="horario__label">A</span>
+                        <input name="inicio_pausa" type="time" class="input"
+                               value="{{ empleado.inicio_pausa if empleado and empleado.inicio_pausa else '' }}">
+                    </div>
+                </div>
+                <div class="field">
+                    <span class="field__label">Rango de tarde</span>
+                    <div class="horario-rango">
+                        <span class="horario__label">DE</span>
+                        <input name="fin_pausa" type="time" class="input"
+                               value="{{ empleado.fin_pausa if empleado and empleado.fin_pausa else '' }}">
+                        <span class="horario__label">A</span>
+                        <input name="fin_jornada" type="time" class="input"
+                               value="{{ empleado.fin_jornada if empleado and empleado.fin_jornada else '' }}">
+                    </div>
+                </div>
+            </div>
+
+            <div class="field">
+                <span class="field__label">Días laborables habituales</span>
+                <div class="dias-check">
+                    {% for lbl, idx in [("L",0),("M",1),("X",2),("J",3),("V",4),("S",5),("D",6)] %}
+                    <label class="dia-check {% if idx in dias_lab %}is-on{% endif %}">
+                        <input type="checkbox" name="dias_laborables_habituales"
+                               value="{{ idx }}" {% if idx in dias_lab %}checked{% endif %}>
+                        {{ lbl }}
+                    </label>
+                    {% endfor %}
+                </div>
+                <p class="sub" style="margin: 6px 0 0;">
+                    Si dejas todos vacíos, el wizard usará L–V por defecto.
+                </p>
+            </div>
+        </div>
+        <div class="panel__foot">
+            <a href="/empleados" class="btn btn--ghost">CANCELAR</a>
+            <button class="btn btn--primary" type="submit" {% if not empresas or not centros %}disabled{% endif %}>
+                {% if empleado %}GUARDAR CAMBIOS{% else %}CREAR EMPLEADO{% endif %}
+            </button>
+        </div>
     </div>
 </form>
+
+<script>
+// Refleja visualmente el toggle de cada dia laborable (clase is-on en el label).
+document.querySelectorAll('.dia-check input[type=checkbox]').forEach(cb => {
+  cb.addEventListener('change', () => {
+    cb.parentElement.classList.toggle('is-on', cb.checked);
+  });
+});
+</script>
 {% endblock %}

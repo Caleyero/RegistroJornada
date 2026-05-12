@@ -1,7 +1,7 @@
 """Modelo Empleado."""
 
 from sqlalchemy import (
-    Boolean, Column, Date, DateTime, ForeignKey,
+    JSON, Boolean, Column, Date, DateTime, ForeignKey,
     Integer, Numeric, String, func,
 )
 from sqlalchemy.orm import relationship
@@ -27,6 +27,17 @@ class Empleado(Base):
     activo = Column(Boolean, default=True, nullable=False)
     email = Column(String(200))
     telefono = Column(String(20))
+
+    # Horario habitual (jornada partida): si esta a None, el wizard usa
+    # los defaults globales. Permite jornada continua dejando vacios
+    # `inicio_pausa` y `fin_pausa`.
+    inicio_jornada = Column(String(5))  # "HH:MM"
+    inicio_pausa = Column(String(5))
+    fin_pausa = Column(String(5))
+    fin_jornada = Column(String(5))
+    # Lista [0..6] (lun..dom). Si None, el wizard cae al default L-V.
+    dias_laborables_habituales = Column(JSON)
+
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

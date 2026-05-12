@@ -865,3 +865,32 @@
     color: var(--ink); font-weight: 700;
   }
   .user-card__sep { color: var(--ink-4); }
+
+  /* ── Horario habitual (form de empleado): rango DE...A inline ────────── */
+  .horario-rango {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 6px 8px; align-items: center;
+    margin-top: 4px;
+  }
+
+  /* ── Checkboxes de dias laborables habituales (form de empleado) ──────── */
+  .dias-check {
+    display: flex; gap: 4px; align-items: center;
+    margin-top: 4px;
+  }
+  .dia-check {
+    width: 32px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--ink);
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    color: var(--ink); cursor: pointer; user-select: none;
+    background: var(--surface);
+    transition: all 100ms ease;
+  }
+  .dia-check:hover { background: var(--surface-3); }
+  .dia-check.is-on { background: var(--ink); color: #fff; }
+  .dia-check.is-on:hover { background: var(--ink-2); }
+  .dia-check input[type=checkbox] {
+    position: absolute; opacity: 0; pointer-events: none;
+  }

@@ -25,6 +25,20 @@ def _parse_fecha(valor: str) -> date | None:
     return datetime.strptime(valor, "%Y-%m-%d").date()
 
 
+def _horario_o_none(valor: str) -> str | None:
+    """Devuelve la cadena 'HH:MM' o None si esta vacia."""
+    v = (valor or "").strip()
+    return v or None
+
+
+def _dias_o_none(dias: list[int]) -> list[int] | None:
+    """Devuelve la lista filtrada a 0..6 o None si esta vacia."""
+    if not dias:
+        return None
+    norm = sorted({int(d) for d in dias if 0 <= int(d) <= 6})
+    return norm or None
+
+
 @router.get("", response_class=HTMLResponse, name="empleados_list")
 def list_empleados(request: Request, db: Session = Depends(get_db)):
     empleados = (
@@ -62,6 +76,11 @@ def create_empleado(
     activo: bool = Form(False),
     email: str = Form(""),
     telefono: str = Form(""),
+    inicio_jornada: str = Form(""),
+    inicio_pausa: str = Form(""),
+    fin_pausa: str = Form(""),
+    fin_jornada: str = Form(""),
+    dias_laborables_habituales: list[int] = Form(default=[]),
 ):
     nif_norm = nif.strip().upper()
     if db.query(Empleado).filter(Empleado.nif == nif_norm).first():
@@ -85,6 +104,11 @@ def create_empleado(
         activo=activo,
         email=email.strip() or None,
         telefono=telefono.strip() or None,
+        inicio_jornada=_horario_o_none(inicio_jornada),
+        inicio_pausa=_horario_o_none(inicio_pausa),
+        fin_pausa=_horario_o_none(fin_pausa),
+        fin_jornada=_horario_o_none(fin_jornada),
+        dias_laborables_habituales=_dias_o_none(dias_laborables_habituales),
     )
     db.add(empleado)
     db.commit()
@@ -122,6 +146,11 @@ def update_empleado(
     activo: bool = Form(False),
     email: str = Form(""),
     telefono: str = Form(""),
+    inicio_jornada: str = Form(""),
+    inicio_pausa: str = Form(""),
+    fin_pausa: str = Form(""),
+    fin_jornada: str = Form(""),
+    dias_laborables_habituales: list[int] = Form(default=[]),
 ):
     empleado = db.get(Empleado, empleado_id)
     if not empleado:
@@ -143,6 +172,11 @@ def update_empleado(
     empleado.activo = activo
     empleado.email = email.strip() or None
     empleado.telefono = telefono.strip() or None
+    empleado.inicio_jornada = _horario_o_none(inicio_jornada)
+    empleado.inicio_pausa = _horario_o_none(inicio_pausa)
+    empleado.fin_pausa = _horario_o_none(fin_pausa)
+    empleado.fin_jornada = _horario_o_none(fin_jornada)
+    empleado.dias_laborables_habituales = _dias_o_none(dias_laborables_habituales)
     db.commit()
     return RedirectResponse("/empleados", status_code=303)
 
