@@ -49,41 +49,63 @@ bash run.sh
 
 Abre <http://127.0.0.1:8600/> en el navegador.
 
-## Setup en una nueva máquina (Windows + WSL Ubuntu)
+## Setup en una nueva máquina
+
+Hay dos formas de arrancar. **Elige una.**
+
+### Opción A · Entorno virtual Windows (recomendado si ya tienes Python en Windows)
+
+Aísla por completo las dependencias de esta app del Python global del sistema.
 
 ```cmd
-:: 1) Clonar el repo en cualquier ruta de Windows
+:: 1) Clonar el repo
 git clone https://github.com/Caleyero/RegistroJornada.git
 cd RegistroJornada
+
+:: 2) Crear el entorno virtual e instalar deps (una sola vez)
+setup.bat
 ```
 
-Después, una sola vez, dentro de WSL:
+A partir de aquí: doble-click en `start.bat` y la app arranca con el `.venv\`
+local. Si `setup.bat` detecta que `.venv\` ya existe, solo actualiza las
+dependencias.
+
+**¿Por qué venv?** Las dependencias de esta app (FastAPI 0.129, Pydantic 2.x,
+SQLAlchemy 2.0, etc.) se quedan dentro de `.venv\` y no afectan a tu Python
+global, donde puedes seguir teniendo `camelot`, `streamlit`, `marker`,
+`langchain` u otras versiones distintas para otros proyectos.
+
+### Opción B · WSL Ubuntu (sin Python en Windows)
 
 ```bash
-# (Sustituye la ruta por la real donde clonaste)
 cd /mnt/c/Users/<tu-usuario>/Documentos/RegistroJornada
-pip3 install -r requirements.txt
+pip3 install -r requirements.txt   # o mejor: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 ```
 
-A partir de aquí:
+Después doble-click en `start.bat`. Como no hay `.venv\` Windows, `start.bat`
+delega en WSL.
 
-- **Doble-click en `menu.bat`** → menú interactivo con 4 opciones:
-  1. Estado del repo (`estado.bat`)
-  2. Bajar cambios desde GitHub (`bajar.bat`)
-  3. Subir cambios a GitHub (`subir.bat`)
-  4. Arrancar la app (`start.bat` — uvicorn + abre el navegador)
-- O usa los `.bat` sueltos directamente.
+### Menú interactivo
 
-La BBDD SQLite se crea automáticamente al primer arranque dentro de `data/`,
-que está en `.gitignore`. Si quieres llevarte los datos de otra máquina, copia
-`data/registro.db` aparte (no por git).
+Doble-click en `menu.bat` para tener todas las acciones a mano:
 
-### Requisitos en la nueva máquina
+1. Estado del repo (`estado.bat`)
+2. Bajar cambios desde GitHub (`bajar.bat`)
+3. Subir cambios a GitHub (`subir.bat`)
+4. Arrancar la app (`start.bat`)
 
-- WSL2 con distro **Ubuntu** (si tu distro tiene otro nombre, edita `-d Ubuntu`
-  en los `.bat` de la raíz o usa `wsl -l -q` para ver el nombre real).
-- Python 3.10+ en WSL (`python3 --version`).
+### Datos persistidos
+
+La BBDD SQLite vive en `data/registro.db` y está en `.gitignore`. Si quieres
+copiar los datos a otra máquina, llévate ese fichero aparte (no por git). Si
+no, la BBDD se recrea vacía en el primer arranque.
+
+### Requisitos
+
+- Python 3.10+ en Windows **o** en WSL Ubuntu.
 - Acceso al repo en GitHub (token HTTPS o clave SSH).
+- (Solo Opción B) WSL2 con distro `Ubuntu`. Si tu distro se llama distinto,
+  edita `-d Ubuntu` en los `.bat` o usa `wsl -l -q` para ver el nombre real.
 
 ## Estructura
 
