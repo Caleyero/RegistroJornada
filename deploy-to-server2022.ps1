@@ -66,7 +66,12 @@ function Get-Or-Prompt-Credential {
 }
 
 function Try-Start-Service {
-    try { Get-Service -ComputerName $server -Name $serviceName | Start-Service } catch { }
+    try {
+        Invoke-Command -ComputerName $server -Credential $cred -ScriptBlock {
+            param($name)
+            Start-Service -Name $name
+        } -ArgumentList $serviceName | Out-Null
+    } catch { }
 }
 
 # ----------------------------------------------------------------------
@@ -84,24 +89,39 @@ if (-not (Test-Path $dst)) {
 $cred = Get-Or-Prompt-Credential
 
 # --- Parar servicio --------------------------------------------------
+# Estrategia escalonada sin Stop-Service (Stop-Service bloquea 30s
+# ignorando -ErrorAction Stop). Vamos directo a sc.exe stop (no bloquea),
+# y si NSSM no se rinde matamos el arbol con taskkill /T /F.
 Write-Step "[1/5] Parando servicio $serviceName"
 try {
-    $svc = Get-Service -ComputerName $server -Name $serviceName -ErrorAction Stop
-    if ($svc.Status -eq "Running") {
-        $svc | Stop-Service -Force
-        for ($i = 0; $i -lt 15; $i++) {
+    $stopResult = Invoke-Command -ComputerName $server -Credential $cred -ScriptBlock {
+        param($name)
+        $svc = Get-Service -Name $name -ErrorAction Stop
+        if ($svc.Status -eq "Stopped") { return "YA_PARADO" }
+
+        & sc.exe stop $name 2>&1 | Out-Null
+
+        for ($i = 0; $i -lt 5; $i++) {
             Start-Sleep -Seconds 1
             $svc.Refresh()
             if ($svc.Status -eq "Stopped") { break }
         }
-        if ($svc.Status -ne "Stopped") {
-            Write-Host "ERROR: el servicio no llego a parar en 15s." -ForegroundColor Red
-            exit 1
+        if ($svc.Status -eq "Stopped") { return "PARADO_NORMAL" }
+
+        $wmi = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+        $rootPid = if ($wmi) { [int]$wmi.ProcessId } else { 0 }
+        if ($rootPid -gt 0) {
+            & taskkill.exe /PID $rootPid /T /F 2>&1 | Out-Null
+            Start-Sleep -Seconds 2
         }
-        Write-Host "Servicio parado." -ForegroundColor Green
-    } else {
-        Write-Host "El servicio ya estaba parado." -ForegroundColor Yellow
-    }
+        & sc.exe stop $name 2>&1 | Out-Null
+        Start-Sleep -Seconds 2
+
+        $svc.Refresh()
+        if ($svc.Status -eq "Stopped") { return "PARADO_FORZADO" }
+        throw "El servicio sigue en estado $($svc.Status) tras sc.exe stop + taskkill."
+    } -ArgumentList $serviceName
+    Write-Host "Servicio parado ($stopResult)." -ForegroundColor Green
 } catch {
     Write-Host "ERROR parando servicio: $_" -ForegroundColor Red
     exit 1
@@ -109,18 +129,21 @@ try {
 
 # --- Robocopy /MIR ---------------------------------------------------
 Write-Step "[2/5] Sincronizando ficheros con robocopy /MIR"
+# IMPORTANTE: robocopy /XD con ruta absoluta solo aplica al ORIGEN; los
+# directorios EXTRA del destino se borran igualmente con /MIR. Usar
+# nombres RELATIVOS (sin path) para que coincidan a cualquier nivel,
+# tanto en origen como en destino. Asi protegemos `data\` y `logs\`
+# del servidor de produccion.
 $excludeDirs = @(
-    "$src\.git",
-    "$src\.venv",
-    "$src\__pycache__",
-    "$src\data",
-    "$src\logs",
-    "$src\handoff",
-    "$src\.pytest_cache",
-    "$src\.mypy_cache",
-    "$src\.claude",
+    ".git",
+    ".venv",
     "__pycache__",
-    ".pytest_cache"
+    "data",
+    "logs",
+    "handoff",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".claude"
 )
 $excludeFiles = @(
     "*.pyc",
@@ -184,17 +207,17 @@ try {
 # --- Arrancar servicio ----------------------------------------------
 Write-Step "[4/5] Arrancando servicio $serviceName"
 try {
-    Get-Service -ComputerName $server -Name $serviceName | Start-Service
-    $svc = Get-Service -ComputerName $server -Name $serviceName
-    for ($i = 0; $i -lt 15; $i++) {
-        Start-Sleep -Seconds 1
-        $svc.Refresh()
-        if ($svc.Status -eq "Running") { break }
-    }
-    if ($svc.Status -ne "Running") {
-        Write-Host "ERROR: el servicio no llego a arrancar en 15s." -ForegroundColor Red
-        exit 1
-    }
+    Invoke-Command -ComputerName $server -Credential $cred -ScriptBlock {
+        param($name)
+        Start-Service -Name $name -ErrorAction Stop
+        $svc = Get-Service -Name $name
+        for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Seconds 1
+            $svc.Refresh()
+            if ($svc.Status -eq "Running") { break }
+        }
+        if ($svc.Status -ne "Running") { throw "Timeout arrancando el servicio (estado: $($svc.Status))." }
+    } -ArgumentList $serviceName
     Write-Host "Servicio arrancado." -ForegroundColor Green
 } catch {
     Write-Host "ERROR arrancando servicio: $_" -ForegroundColor Red

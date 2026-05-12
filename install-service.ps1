@@ -104,18 +104,19 @@ $cred = Get-Or-Prompt-Credential
 
 # --- Copia inicial (robocopy /E, sin mirror) ------------------------
 Write-Step "[1/7] Copiando ficheros iniciales a $dst"
+# Nombres RELATIVOS para que /XD coincida tanto en origen como en destino
+# (las rutas absolutas solo se evaluan contra el origen y /MIR borraria
+# directorios EXTRA del destino).
 $excludeDirs = @(
-    "$src\.git",
-    "$src\.venv",
-    "$src\__pycache__",
-    "$src\data",
-    "$src\logs",
-    "$src\handoff",
-    "$src\.pytest_cache",
-    "$src\.mypy_cache",
-    "$src\.claude",
+    ".git",
+    ".venv",
     "__pycache__",
-    ".pytest_cache"
+    "data",
+    "logs",
+    "handoff",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".claude"
 )
 $excludeFiles = @(
     "*.pyc",
@@ -185,7 +186,7 @@ ADMIN_DNI=$adminDni
 "@
     # IMPORTANTE: Set-Content -Encoding UTF8 en Windows PowerShell 5.x escribe
     # UTF-8 CON BOM, y python-dotenv interpreta el BOM como parte de la primera
-    # clave (APP_NAME -> ﻿APP_NAME), rompiendo pydantic-settings.
+    # clave (APP_NAME -> [BOM-bytes]APP_NAME), rompiendo pydantic-settings.
     # Forzamos UTF-8 SIN BOM con la API de .NET.
     [System.IO.File]::WriteAllText($envPath, $envContent, (New-Object System.Text.UTF8Encoding $false))
     Write-Host ".env creado con SECRET_KEY generada y ADMIN_DNI=$adminDni." -ForegroundColor Green
@@ -309,21 +310,21 @@ if ($marker -eq "SERVICIO_YA_EXISTE") {
 # --- Arrancar servicio ----------------------------------------------
 Write-Step "[6/7] Arrancando servicio $serviceName"
 try {
-    Get-Service -ComputerName $server -Name $serviceName | Start-Service
-    $svc = Get-Service -ComputerName $server -Name $serviceName
-    for ($i = 0; $i -lt 15; $i++) {
-        Start-Sleep -Seconds 1
-        $svc.Refresh()
-        if ($svc.Status -eq "Running") { break }
-    }
-    if ($svc.Status -ne "Running") {
-        Write-Host "ERROR: el servicio no arranco en 15s." -ForegroundColor Red
-        Write-Hint "Revisa el log: \\$server\c$\apps\RegistroJornada\logs\service.log"
-        exit 1
-    }
+    Invoke-Command -ComputerName $server -Credential $cred -ScriptBlock {
+        param($name)
+        Start-Service -Name $name -ErrorAction Stop
+        $svc = Get-Service -Name $name
+        for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Seconds 1
+            $svc.Refresh()
+            if ($svc.Status -eq "Running") { break }
+        }
+        if ($svc.Status -ne "Running") { throw "Timeout arrancando el servicio (estado: $($svc.Status))." }
+    } -ArgumentList $serviceName
     Write-Host "Servicio arrancado." -ForegroundColor Green
 } catch {
     Write-Host "ERROR arrancando servicio: $_" -ForegroundColor Red
+    Write-Hint "Revisa el log: \\$server\c$\apps\RegistroJornada\logs\service.log"
     exit 1
 }
 

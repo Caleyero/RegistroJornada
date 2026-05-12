@@ -81,8 +81,9 @@ function Show-Menu {
     Show-Item "11" "Conectar por RDP"         "mstsc /v:$ProdServer"
 
     Write-Host ""
-    Write-Host "  INSTALACION (uso unico)" -ForegroundColor DarkYellow
+    Write-Host "  INSTALACION / AJUSTES (uso puntual)" -ForegroundColor DarkYellow
     Show-Item "12" "Instalar servicio"        "install-service.ps1 (solo primera vez)"
+    Show-Item "13" "Ajustar config NSSM"      "stop rapido: TerminateProcess + KillProcessTree"
 
     Write-Host ""
     Write-Host "   Q)  Salir" -ForegroundColor DarkGray
@@ -104,13 +105,19 @@ function Invoke-ProdInstall {
 }
 
 function Invoke-ProdStatus {
+    $cred = Get-ProdCredential
+    if (-not $cred) { return }
+
     Write-Host ""
     Write-Host "  Servicio Windows en $ProdServer..." -ForegroundColor Cyan
     try {
-        $svc = Get-Service -ComputerName $ProdServer -Name $ProdServiceName -ErrorAction Stop
-        $color = if ($svc.Status -eq "Running") { "Green" } else { "Yellow" }
-        Write-Host ("    Estado: {0}" -f $svc.Status) -ForegroundColor $color
-        Write-Host ("    Nombre: {0}" -f $svc.Name) -ForegroundColor DarkGray
+        $status = Invoke-Command -ComputerName $ProdServer -Credential $cred -ScriptBlock {
+            param($name)
+            (Get-Service -Name $name).Status.ToString()
+        } -ArgumentList $ProdServiceName
+        $color = if ($status -eq "Running") { "Green" } else { "Yellow" }
+        Write-Host ("    Estado: {0}" -f $status) -ForegroundColor $color
+        Write-Host ("    Nombre: {0}" -f $ProdServiceName) -ForegroundColor DarkGray
     } catch {
         Write-Host "    ERROR consultando el servicio: $_" -ForegroundColor Red
         return
@@ -126,17 +133,80 @@ function Invoke-ProdStatus {
     }
 }
 
+$ProdStopServiceBlock = {
+    # Estrategia de parada escalonada SIN bloquear el cliente:
+    #   1. sc.exe stop (envia STOP al SCM y retorna inmediatamente).
+    #   2. Si en 5s no para, taskkill /T /F sobre el PID raiz del servicio
+    #      (nssm.exe) que mata todo el arbol descendiente (uvicorn incluido).
+    #   3. sc.exe stop otra vez para resetear el SCM si quedo en STOP_PENDING.
+    # NO usamos Stop-Service: bloquea hasta 30s ignorando -ErrorAction Stop.
+    param($name)
+    $svc = Get-Service -Name $name -ErrorAction Stop
+    if ($svc.Status -eq "Stopped") { return "YA_PARADO" }
+
+    & sc.exe stop $name 2>&1 | Out-Null
+
+    for ($i = 0; $i -lt 5; $i++) {
+        Start-Sleep -Seconds 1
+        $svc.Refresh()
+        if ($svc.Status -eq "Stopped") { break }
+    }
+    if ($svc.Status -eq "Stopped") { return "PARADO_NORMAL" }
+
+    # Plan B: matar el arbol de procesos del servicio
+    $wmi = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    $rootPid = if ($wmi) { [int]$wmi.ProcessId } else { 0 }
+    if ($rootPid -gt 0) {
+        & taskkill.exe /PID $rootPid /T /F 2>&1 | Out-Null
+        Start-Sleep -Seconds 2
+    }
+
+    # Plan C: sc.exe stop otra vez para forzar la transicion a Stopped
+    & sc.exe stop $name 2>&1 | Out-Null
+    Start-Sleep -Seconds 2
+
+    $svc.Refresh()
+    if ($svc.Status -eq "Stopped") { return "PARADO_FORZADO" }
+    throw "El servicio sigue en estado $($svc.Status) tras sc.exe stop + taskkill."
+}
+
+$ProdStartServiceBlock = {
+    param($name)
+    Start-Service -Name $name -ErrorAction Stop
+    $svc = Get-Service -Name $name
+    for ($i = 0; $i -lt 15; $i++) {
+        Start-Sleep -Seconds 1
+        $svc.Refresh()
+        if ($svc.Status -eq "Running") { break }
+    }
+    if ($svc.Status -ne "Running") {
+        throw "El servicio no arranco en 15s (estado: $($svc.Status))."
+    }
+}
+
 function Invoke-ProdRestart {
     if (-not (Confirm-Action "Vas a reiniciar el servicio $ProdServiceName en $ProdServer.")) {
         return
     }
-    Write-Host ""
-    Write-Host "  Parando servicio..." -ForegroundColor Cyan
-    Get-Service -ComputerName $ProdServer -Name $ProdServiceName | Stop-Service -Force
+    $cred = Get-ProdCredential
+    if (-not $cred) { return }
+
+    try {
+        Write-Host ""
+        Write-Host "  Parando servicio..." -ForegroundColor Cyan
+        $stopResult = Invoke-Command -ComputerName $ProdServer -Credential $cred `
+            -ScriptBlock $ProdStopServiceBlock -ArgumentList $ProdServiceName
+        Write-Host "  Servicio parado ($stopResult)." -ForegroundColor Green
+
+        Write-Host "  Arrancando servicio..." -ForegroundColor Cyan
+        Invoke-Command -ComputerName $ProdServer -Credential $cred `
+            -ScriptBlock $ProdStartServiceBlock -ArgumentList $ProdServiceName | Out-Null
+        Write-Host "  Servicio arrancado." -ForegroundColor Green
+    } catch {
+        Write-Host "  ERROR durante el reinicio: $_" -ForegroundColor Red
+        return
+    }
     Start-Sleep -Seconds 2
-    Write-Host "  Arrancando servicio..." -ForegroundColor Cyan
-    Get-Service -ComputerName $ProdServer -Name $ProdServiceName | Start-Service
-    Start-Sleep -Seconds 3
     Invoke-ProdStatus
 }
 
@@ -206,6 +276,47 @@ function Invoke-ProdRdp {
     Start-Process mstsc -ArgumentList "/v:$ProdServer"
 }
 
+function Invoke-ProdTuneNssm {
+    # Configura el servicio NSSM para que el stop sea rapido:
+    #   - AppStopMethodSkip 6 (bitmask Console+Window+Threads): NSSM no envia
+    #     CTRL_C ni WM_CLOSE ni WM_QUIT, va directo a TerminateProcess.
+    #   - AppKillProcessTree 1: al hacer Terminate, mata todo el arbol
+    #     (nssm -> python -> uvicorn) en una sola operacion.
+    # Idempotente. Aplica sin necesidad de reiniciar el servicio, pero el
+    # efecto se nota a partir del siguiente stop.
+    $cred = Get-ProdCredential
+    if (-not $cred) { return }
+
+    Write-Host ""
+    Write-Host "  Aplicando config NSSM a $ProdServiceName en $ProdServer..." -ForegroundColor Cyan
+    try {
+        $out = Invoke-Command -ComputerName $ProdServer -Credential $cred -ScriptBlock {
+            param($name)
+            $nssm = (Get-Command nssm -ErrorAction SilentlyContinue).Source
+            if (-not $nssm) {
+                foreach ($p in @(
+                    "C:\Windows\System32\nssm.exe",
+                    "C:\ProgramData\chocolatey\bin\nssm.exe",
+                    "C:\Tools\nssm\nssm.exe"
+                )) { if (Test-Path $p) { $nssm = $p; break } }
+            }
+            if (-not $nssm) { throw "NSSM no encontrado en PATH ni en rutas conocidas." }
+
+            & $nssm set $name AppStopMethodSkip 6 | Out-String
+            & $nssm set $name AppKillProcessTree 1 | Out-String
+
+            # Confirmacion: leer y devolver los valores actuales.
+            $skip = (& $nssm get $name AppStopMethodSkip).Trim()
+            $tree = (& $nssm get $name AppKillProcessTree).Trim()
+            return "AppStopMethodSkip=$skip  AppKillProcessTree=$tree"
+        } -ArgumentList $ProdServiceName
+        Write-Host "  $out" -ForegroundColor Green
+        Write-Host "  Listo. El proximo stop sera limpio (PARADO_NORMAL en ~1s)." -ForegroundColor DarkGray
+    } catch {
+        Write-Host "  ERROR ajustando NSSM: $_" -ForegroundColor Red
+    }
+}
+
 # ----------------------------------------------------------------------------
 # Loop principal
 # ----------------------------------------------------------------------------
@@ -229,6 +340,7 @@ while ($true) {
         '^(10)$' { $cmd = { Invoke-ProdOpenUI } }
         '^(11)$' { $cmd = { Invoke-ProdRdp } }
         '^(12)$' { $cmd = { Invoke-ProdInstall } }
+        '^(13)$' { $cmd = { Invoke-ProdTuneNssm } }
         '^(q|0|exit|salir)$' { exit 0 }
         default {
             Write-Host "  Opcion no reconocida." -ForegroundColor Yellow
