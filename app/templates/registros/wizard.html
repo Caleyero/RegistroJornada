@@ -5,9 +5,15 @@
   
     <header class="page__head">
       <div>
+        {% if empleado_lock %}
+        <div class="kicker">Mi área / Nuevo registro</div>
+        <h1 class="h1">Nuevo registro mensual</h1>
+        <div class="sub">Genera tu hoja mensual de jornada en PDF.</div>
+        {% else %}
         <div class="kicker">Registros / Nuevo</div>
         <h1 class="h1">Asistente de registro mensual</h1>
         <div class="sub">Genera la hoja mensual de jornada en PDF. Los parámetros quedan guardados en BBDD.</div>
+        {% endif %}
       </div>
       <div class="actions">
         <span class="status" id="status"><span class="dot"></span><span id="statusText">SIN CAMBIOS</span></span>
@@ -21,19 +27,58 @@
       <!-- ──────────── Columna formulario (acordeón) ──────────── -->
       <div class="col-form">
   
-        <!-- Bloque 1: Empleado y periodo -->
+        <!-- Bloque 1: Empleado y periodo (o solo Periodo si lock) -->
         <section class="block is-open" data-block="1">
           <header class="block__head" tabindex="0">
             <span class="block__num">1</span>
-            <span class="block__title">EMPLEADO Y PERIODO</span>
+            <span class="block__title">{% if empleado_lock %}PERIODO{% else %}EMPLEADO Y PERIODO{% endif %}</span>
             <span class="block__summary" id="sum1">—</span>
             <span class="block__chev">▾</span>
           </header>
           <div class="block__body">
-            <div class="grid grid-3">
+
+            {% if empleado_lock and empleados_lista %}
+            {% set me = empleados_lista[0] %}
+            <!-- Tarjeta de identidad fija: el usuario no puede cambiar el empleado -->
+            <div class="ident-card">
+              <div class="ident-card__row">
+                <span class="ident-card__label">EMPLEADO</span>
+                <span class="ident-card__value">{{ me.apellidos }}, {{ me.nombre }}</span>
+              </div>
+              <div class="ident-card__row">
+                <span class="ident-card__label">NIF</span>
+                <span class="ident-card__value">{{ me.nif }}</span>
+              </div>
+              {% if me.empresa %}
+              <div class="ident-card__row">
+                <span class="ident-card__label">EMPRESA</span>
+                <span class="ident-card__value">{{ me.empresa.nombre }}</span>
+              </div>
+              {% endif %}
+              {% if me.centro_trabajo %}
+              <div class="ident-card__row">
+                <span class="ident-card__label">CENTRO</span>
+                <span class="ident-card__value">{{ me.centro_trabajo.nombre }}</span>
+              </div>
+              {% endif %}
+            </div>
+            <!-- Select oculto: el JS necesita el value, pero el usuario no lo ve. -->
+            <select id="empleado" class="hidden" disabled aria-hidden="true">
+              <option value="{{ me.id }}"
+                      data-empresa="{{ me.empresa.nombre if me.empresa else '' }}"
+                      data-centro="{{ me.centro_trabajo.nombre if me.centro_trabajo else '' }}"
+                      selected>
+                {{ me.apellidos }}, {{ me.nombre }} ({{ me.nif }})
+              </option>
+            </select>
+            {% endif %}
+
+            <div class="grid {% if empleado_lock %}grid-2{% else %}grid-3{% endif %}"
+                 {% if empleado_lock %}style="margin-top: 12px;"{% endif %}>
+              {% if not empleado_lock %}
               <div class="field">
                 <label class="field__label">Empleado</label>
-                              <select id="empleado" class="select" required>
+                <select id="empleado" class="select" required>
                   <option value="">— Selecciona empleado —</option>
                   {% for e in empleados_lista %}
                   <option value="{{ e.id }}"
@@ -43,8 +88,11 @@
                   </option>
                   {% endfor %}
                 </select>
-                <div class="field__hint" id="empleadoInfo">DISTEXARY SL · OFICINAS Y ALMACÉN</div>
+                <div class="field__hint" id="empleadoInfo">Selecciona un empleado</div>
               </div>
+              {% else %}
+              <span id="empleadoInfo" class="hidden"></span>
+              {% endif %}
               <div class="field">
                 <label class="field__label">Año</label>
                 <input id="anio" type="number" min="2020" max="2099" value="2026" class="input" required>
@@ -321,6 +369,7 @@ const FESTIVOS_ASTURIAS = {{ festivos_asturias | tojson }};
 const ANIO_DEFAULT = {{ anio_default }};
 const MES_DEFAULT  = {{ mes_default }};
 const REGISTRO_EXISTENTE = {{ (registro_existente | default(none)) | tojson }};
+const EMPLEADO_LOCK = {{ (empleado_lock | default(false)) | tojson }};
 
 let festivos   = {};
 let vacaciones = new Set();
@@ -1058,6 +1107,12 @@ function aplicarRegistroExistente(reg) {
 // Sincronizar año/mes con los valores que inyecta el backend
 $("#anio").value = ANIO_DEFAULT;
 $("#mes").value = String(MES_DEFAULT);
+
+// Si el empleado está bloqueado (modo usuario normal), dispara el `change`
+// para que cabecera e info del empleado se rellenen al cargar.
+if (EMPLEADO_LOCK) {
+  $("#empleado").dispatchEvent(new Event("change"));
+}
 
 refrescarMes();
 refrescarResumenes();

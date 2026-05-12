@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Acceso · Registros de Jornada{% endblock %}</title>
+    <link href="{{ url_for('static', path='css/app.css') }}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="auth-body">
+
+<div class="auth-wrap">
+    <div class="auth-brand">
+        <span class="auth-brand__mark"></span>
+        REGISTROS · JORNADA
+    </div>
+    {% block content %}{% endblock %}
+</div>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

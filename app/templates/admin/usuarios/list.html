@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Administración / Usuarios</div>
+        <h1 class="h1">Usuarios</h1>
+        <div class="sub">Quién puede entrar al sistema y con qué rol.</div>
+    </div>
+    <div class="actions">
+        <a href="/admin/usuarios/nuevo" class="btn btn--primary">+ NUEVO USUARIO</a>
+    </div>
+</header>
+
+{% if usuarios %}
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>DNI</th>
+                <th>EMPLEADO VINCULADO</th>
+                <th>ROL</th>
+                <th class="col-center">ACTIVO</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in usuarios %}
+            <tr>
+                <td><span class="strong">{{ u.dni }}</span></td>
+                <td>
+                    {% if u.empleado %}
+                        {{ u.empleado.apellidos }}, {{ u.empleado.nombre }}
+                    {% elif u.es_admin %}
+                        <span class="sub">— sin vincular (admin de sistema) —</span>
+                    {% else %}
+                        <span class="tag tag--off">SIN EMPLEADO</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if u.es_admin %}<span class="tag tag--on">ADMIN</span>
+                    {% else %}<span class="tag">USUARIO</span>{% endif %}
+                </td>
+                <td class="col-center">
+                    {% if u.activo %}<span class="tag tag--on">SÍ</span>
+                    {% else %}<span class="tag tag--off">NO</span>{% endif %}
+                </td>
+                <td class="col-actions">
+                    <a href="/admin/usuarios/{{ u.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    {% if u.id != current_user.id %}
+                    <form method="post" action="/admin/usuarios/{{ u.id }}/toggle-activo" style="display:inline;">
+                        <button class="icon-btn" type="submit"
+                                title="{% if u.activo %}Desactivar{% else %}Activar{% endif %}">
+                            {% if u.activo %}◯{% else %}●{% endif %}
+                        </button>
+                    </form>
+                    <form method="post" action="/admin/usuarios/{{ u.id }}/eliminar" style="display:inline;"
+                          onsubmit="return confirm('¿Eliminar al usuario con DNI {{ u.dni }}?');">
+                        <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
+                    </form>
+                    {% else %}
+                    <span class="sub">(tú)</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">
+    Aún no hay usuarios. <a href="/admin/usuarios/nuevo">Crea el primero →</a>
+</div>
+{% endif %}
+{% endblock %}

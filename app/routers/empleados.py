@@ -1,19 +1,22 @@
-"""CRUD de empleados."""
+"""CRUD de empleados (solo admin)."""
 
 from datetime import date, datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import CentroTrabajo, Empleado, Empresa
+from app.templating import render
 
 
-router = APIRouter(prefix="/empleados", tags=["empleados"])
-templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
+router = APIRouter(
+    prefix="/empleados",
+    tags=["empleados"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 def _parse_fecha(valor: str) -> date | None:
@@ -29,19 +32,17 @@ def list_empleados(request: Request, db: Session = Depends(get_db)):
         .order_by(Empleado.apellidos, Empleado.nombre)
         .all()
     )
-    return templates.TemplateResponse("empleados/list.html", {
-        "request": request, "empleados": empleados,
-    })
+    return render(request, db, "empleados/list.html", empleados=empleados)
 
 
 @router.get("/nuevo", response_class=HTMLResponse, name="empleados_new")
 def new_empleado_form(request: Request, db: Session = Depends(get_db)):
     empresas = db.query(Empresa).order_by(Empresa.nombre).all()
     centros = db.query(CentroTrabajo).order_by(CentroTrabajo.nombre).all()
-    return templates.TemplateResponse("empleados/form.html", {
-        "request": request, "empleado": None,
-        "empresas": empresas, "centros": centros,
-    })
+    return render(
+        request, db, "empleados/form.html",
+        empleado=None, empresas=empresas, centros=centros,
+    )
 
 
 @router.post("/nuevo", name="empleados_create")
@@ -97,10 +98,10 @@ def edit_empleado_form(empleado_id: int, request: Request, db: Session = Depends
         raise HTTPException(status_code=404, detail="Empleado no encontrado.")
     empresas = db.query(Empresa).order_by(Empresa.nombre).all()
     centros = db.query(CentroTrabajo).order_by(CentroTrabajo.nombre).all()
-    return templates.TemplateResponse("empleados/form.html", {
-        "request": request, "empleado": empleado,
-        "empresas": empresas, "centros": centros,
-    })
+    return render(
+        request, db, "empleados/form.html",
+        empleado=empleado, empresas=empresas, centros=centros,
+    )
 
 
 @router.post("/{empleado_id}/editar", name="empleados_update")
@@ -151,6 +152,14 @@ def delete_empleado(empleado_id: int, db: Session = Depends(get_db)):
     empleado = db.get(Empleado, empleado_id)
     if not empleado:
         raise HTTPException(status_code=404, detail="Empleado no encontrado.")
+    if empleado.usuario is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El empleado tiene un usuario vinculado. "
+                "Elimina o desvincula primero el usuario en /admin/usuarios."
+            ),
+        )
     db.delete(empleado)
     db.commit()
     return RedirectResponse("/empleados", status_code=303)

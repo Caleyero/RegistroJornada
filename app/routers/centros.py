@@ -1,34 +1,32 @@
-"""CRUD de centros de trabajo."""
-
-from pathlib import Path
+"""CRUD de centros de trabajo (solo admin)."""
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import CentroTrabajo, Empresa
+from app.templating import render
 
 
-router = APIRouter(prefix="/centros", tags=["centros"])
-templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
+router = APIRouter(
+    prefix="/centros",
+    tags=["centros"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("", response_class=HTMLResponse, name="centros_list")
 def list_centros(request: Request, db: Session = Depends(get_db)):
     centros = db.query(CentroTrabajo).order_by(CentroTrabajo.nombre).all()
-    return templates.TemplateResponse("centros/list.html", {
-        "request": request, "centros": centros,
-    })
+    return render(request, db, "centros/list.html", centros=centros)
 
 
 @router.get("/nuevo", response_class=HTMLResponse, name="centros_new")
 def new_centro_form(request: Request, db: Session = Depends(get_db)):
     empresas = db.query(Empresa).order_by(Empresa.nombre).all()
-    return templates.TemplateResponse("centros/form.html", {
-        "request": request, "centro": None, "empresas": empresas,
-    })
+    return render(request, db, "centros/form.html", centro=None, empresas=empresas)
 
 
 @router.post("/nuevo", name="centros_create")
@@ -66,9 +64,7 @@ def edit_centro_form(centro_id: int, request: Request, db: Session = Depends(get
     if not centro:
         raise HTTPException(status_code=404, detail="Centro no encontrado.")
     empresas = db.query(Empresa).order_by(Empresa.nombre).all()
-    return templates.TemplateResponse("centros/form.html", {
-        "request": request, "centro": centro, "empresas": empresas,
-    })
+    return render(request, db, "centros/form.html", centro=centro, empresas=empresas)
 
 
 @router.post("/{centro_id}/editar", name="centros_update")

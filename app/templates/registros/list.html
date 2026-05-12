@@ -1,17 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Historial de registros{% endblock %}
+{% set es_admin = current_user and current_user.es_admin %}
+{% block title %}{% if es_admin %}Historial de registros{% else %}Mis registros{% endif %}{% endblock %}
 
 {% block content %}
 <header class="page__head">
     <div>
-        <div class="kicker">Registros / Historial</div>
-        <h1 class="h1">Registros generados</h1>
-        <div class="sub">Parámetros guardados de cada PDF emitido. Regenera o edita cuando lo necesites.</div>
+        {% if es_admin %}
+            <div class="kicker">Registros / Historial</div>
+            <h1 class="h1">Registros generados</h1>
+            <div class="sub">Parámetros guardados de cada PDF emitido. Regenera o edita cuando lo necesites.</div>
+        {% else %}
+            <div class="kicker">Mi área</div>
+            <h1 class="h1">Mis registros</h1>
+            {% if mi_empleado %}
+                <div class="user-card">
+                    <span class="user-card__name">{{ mi_empleado.apellidos }}, {{ mi_empleado.nombre }}</span>
+                    <span class="user-card__sep">·</span>
+                    <span>NIF {{ mi_empleado.nif }}</span>
+                    {% if mi_empleado.empresa %}
+                        <span class="user-card__sep">·</span>
+                        <span>{{ mi_empleado.empresa.nombre }}</span>
+                    {% endif %}
+                    {% if mi_empleado.centro_trabajo %}
+                        <span class="user-card__sep">·</span>
+                        <span>{{ mi_empleado.centro_trabajo.nombre }}</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endif %}
     </div>
     <div class="actions">
         <a href="/registros/nuevo" class="btn btn--primary">+ NUEVO REGISTRO</a>
     </div>
 </header>
+
+{% if aviso %}
+<div class="alert">{{ aviso }}</div>
+{% endif %}
 
 {% set meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] %}
 
@@ -21,8 +46,10 @@
         <thead>
             <tr>
                 <th>PERIODO</th>
+                {% if es_admin %}
                 <th>EMPLEADO</th>
                 <th>EMPRESA</th>
+                {% endif %}
                 <th>HORARIO</th>
                 <th>GENERADO</th>
                 <th class="col-actions">ACCIONES</th>
@@ -32,18 +59,20 @@
             {% for r in registros %}
             <tr>
                 <td><span class="strong">{{ meses[r.mes] }} {{ r.anio }}</span></td>
+                {% if es_admin %}
                 <td>
                     <div class="strong">{{ r.empleado.apellidos }}, {{ r.empleado.nombre }}</div>
                     <div class="small">{{ r.empleado.nif }}</div>
                 </td>
                 <td>{{ r.empleado.empresa.nombre if r.empleado.empresa else "—" }}</td>
+                {% endif %}
                 <td>{{ r.inicio_jornada }}–{{ r.inicio_pausa }} / {{ r.fin_pausa }}–{{ r.fin_jornada }}</td>
                 <td><span class="small">{{ r.created_at.strftime("%d/%m/%Y %H:%M") if r.created_at else "" }}</span></td>
                 <td class="col-actions">
                     <a href="/registros/{{ r.id }}/pdf" class="icon-btn" title="Descargar PDF">↓</a>
                     <a href="/registros/{{ r.id }}/editar" class="icon-btn" title="Editar">✎</a>
                     <form method="post" action="/registros/{{ r.id }}/eliminar" style="display:inline;"
-                          onsubmit="return confirm('¿Eliminar el registro de {{ meses[r.mes] }} {{ r.anio }} de {{ r.empleado.apellidos|e }}?');">
+                          onsubmit="return confirm('¿Eliminar el registro de {{ meses[r.mes] }} {{ r.anio }}?');">
                         <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
                     </form>
                 </td>
@@ -52,7 +81,7 @@
         </tbody>
     </table>
 </div>
-{% else %}
+{% elif not aviso %}
 <div class="empty">
     Aún no hay registros guardados. <a href="/registros/nuevo">Genera el primero →</a>
 </div>

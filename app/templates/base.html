@@ -11,13 +11,30 @@
 
 <nav class="nav">
     <a class="nav__brand" href="/">REGISTROS · JORNADA</a>
-    <a class="nav__link {% if request.url.path == '/' %}is-active{% endif %}" href="/">DASHBOARD</a>
-    <a class="nav__link {% if request.url.path.startswith('/empresas') %}is-active{% endif %}" href="/empresas">EMPRESAS</a>
-    <a class="nav__link {% if request.url.path.startswith('/centros') %}is-active{% endif %}" href="/centros">CENTROS</a>
-    <a class="nav__link {% if request.url.path.startswith('/empleados') %}is-active{% endif %}" href="/empleados">EMPLEADOS</a>
-    <a class="nav__link {% if request.url.path == '/registros' or request.url.path.startswith('/registros/') and '/nuevo' not in request.url.path %}is-active{% endif %}" href="/registros">HISTORIAL</a>
-    <a class="nav__link {% if '/registros/nuevo' in request.url.path %}is-active{% endif %}" href="/registros/nuevo">+ NUEVO REGISTRO</a>
-    <span class="nav__meta">v1.0</span>
+
+    {% if current_user and current_user.es_admin %}
+        <a class="nav__link {% if request.url.path == '/admin' %}is-active{% endif %}" href="/admin">DASHBOARD</a>
+        <a class="nav__link {% if request.url.path.startswith('/empresas') %}is-active{% endif %}" href="/empresas">EMPRESAS</a>
+        <a class="nav__link {% if request.url.path.startswith('/centros') %}is-active{% endif %}" href="/centros">CENTROS</a>
+        <a class="nav__link {% if request.url.path.startswith('/empleados') %}is-active{% endif %}" href="/empleados">EMPLEADOS</a>
+        <a class="nav__link {% if request.url.path.startswith('/admin/usuarios') %}is-active{% endif %}" href="/admin/usuarios">USUARIOS</a>
+        <a class="nav__link {% if request.url.path == '/registros' or (request.url.path.startswith('/registros/') and '/nuevo' not in request.url.path) %}is-active{% endif %}" href="/registros">REGISTROS</a>
+        <a class="nav__link {% if '/registros/nuevo' in request.url.path %}is-active{% endif %}" href="/registros/nuevo">+ NUEVO REGISTRO</a>
+    {% elif current_user %}
+        <a class="nav__link {% if request.url.path == '/registros' or (request.url.path.startswith('/registros/') and '/nuevo' not in request.url.path) %}is-active{% endif %}" href="/registros">MIS REGISTROS</a>
+        <a class="nav__link {% if '/registros/nuevo' in request.url.path %}is-active{% endif %}" href="/registros/nuevo">+ NUEVO REGISTRO</a>
+    {% endif %}
+
+    {% if current_user %}
+        <div class="nav__user">
+            <span class="nav__who">{{ current_user.nombre_visible }}</span>
+            <form method="post" action="/logout" class="nav__logout">
+                <button type="submit" class="btn btn--ghost btn--sm">SALIR</button>
+            </form>
+        </div>
+    {% else %}
+        <span class="nav__meta">v1.0</span>
+    {% endif %}
 </nav>
 
 <div class="page">

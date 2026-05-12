@@ -773,3 +773,95 @@
   .segmented button.is-on {
     background: var(--ink); color: #fff; font-weight: 700;
   }
+
+  /* ── Navbar: usuario logueado + salir ────────────────────────────────── */
+  .nav__user {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .nav__who {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em;
+    color: var(--ink-3); white-space: nowrap;
+  }
+  .nav__logout { margin: 0; }
+
+  /* ── Login (base_auth.html) ──────────────────────────────────────────── */
+  .auth-body {
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .auth-wrap {
+    width: 100%; max-width: 380px; padding: 24px;
+  }
+  .auth-brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-weight: 700;
+    letter-spacing: 0.14em; font-size: 13px;
+    color: var(--ink); margin-bottom: 20px;
+    justify-content: center;
+  }
+  .auth-brand__mark {
+    width: 14px; height: 14px; border: 1.5px solid var(--ink);
+  }
+  .auth-card {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .auth-card__head { display: flex; flex-direction: column; gap: 6px; }
+  .auth-card__head .h1 { margin: 0; font-size: 20px; }
+  .auth-card__head .sub { margin: 0; }
+  .auth-submit {
+    width: 100%; justify-content: center;
+    padding: 10px 14px; font-size: 13px;
+  }
+  .auth-error {
+    background: var(--warn-tint);
+    border: 1px solid var(--ink);
+    padding: 8px 12px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink);
+  }
+  .auth-hint {
+    margin: 0; font-size: 12px; color: var(--ink-3);
+    text-align: center; line-height: 1.5;
+  }
+
+  /* ── Tarjeta de identidad (wizard en modo "yo soy yo") ────────────────── */
+  .ident-card {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+  }
+  .ident-card__row {
+    display: contents;
+  }
+  .ident-card__label {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    align-self: center;
+  }
+  .ident-card__value {
+    font-family: var(--mono); font-size: 13px;
+    color: var(--ink); font-weight: 700;
+    align-self: center;
+  }
+
+  /* ── Cabecera "Mi área" en /registros ─────────────────────────────────── */
+  .user-card {
+    display: flex; flex-wrap: wrap;
+    align-items: center; gap: 6px 8px;
+    margin-top: 6px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-3); letter-spacing: 0.04em;
+  }
+  .user-card__name {
+    color: var(--ink); font-weight: 700;
+  }
+  .user-card__sep { color: var(--ink-4); }

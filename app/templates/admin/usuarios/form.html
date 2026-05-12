@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{% if usuario %}Editar{% else %}Nuevo{% endif %} usuario{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Usuarios / {% if usuario %}Editar{% else %}Nuevo{% endif %}</div>
+        <h1 class="h1">
+            {% if usuario %}{{ usuario.dni }}
+            {% else %}Nuevo usuario{% endif %}
+        </h1>
+        {% if usuario and usuario.empleado %}
+            <div class="sub">{{ usuario.empleado.apellidos }}, {{ usuario.empleado.nombre }}</div>
+        {% endif %}
+    </div>
+</header>
+
+{% if error %}
+<div class="alert">{{ error }}</div>
+{% endif %}
+
+<form method="post"
+      action="{% if usuario %}/admin/usuarios/{{ usuario.id }}/editar{% else %}/admin/usuarios/nuevo{% endif %}"
+      class="panel" style="max-width: 720px;">
+    <div class="panel__head">
+        <span class="panel__title">DATOS DE ACCESO</span>
+    </div>
+    <div class="panel__body">
+        <div class="grid grid-2 mb-2">
+            <div class="field">
+                <label class="field__label">DNI <span class="req">*</span></label>
+                <input name="dni" class="input" required maxlength="9"
+                       autocapitalize="characters" spellcheck="false"
+                       value="{{ usuario.dni if usuario else '' }}">
+            </div>
+            <div class="field">
+                <label class="field__label">Empleado vinculado</label>
+                <select name="empleado_id" class="select">
+                    <option value="">— sin vincular (admin de sistema) —</option>
+                    {% for e in empleados %}
+                    <option value="{{ e.id }}"
+                            {% if usuario and usuario.empleado_id == e.id %}selected{% endif %}>
+                        {{ e.apellidos }}, {{ e.nombre }} · NIF {{ e.nif }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-2">
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" name="es_admin"
+                           {% if usuario and usuario.es_admin %}checked{% endif %}>
+                    Es administrador
+                </label>
+                <p class="sub">Acceso completo: empresas, centros, empleados, registros, usuarios.</p>
+            </div>
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" name="activo"
+                           {% if usuario is none or usuario.activo %}checked{% endif %}>
+                    Usuario activo
+                </label>
+                <p class="sub">Desmarcar para bloquear el acceso sin eliminar.</p>
+            </div>
+        </div>
+    </div>
+    <div class="panel__foot">
+        <a href="/admin/usuarios" class="btn btn--ghost">CANCELAR</a>
+        <button class="btn btn--primary" type="submit">
+            {% if usuario %}GUARDAR CAMBIOS{% else %}CREAR USUARIO{% endif %}
+        </button>
+    </div>
+</form>
+{% endblock %}

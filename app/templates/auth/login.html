@@ -1,0 +1,38 @@
+{% extends "base_auth.html" %}
+{% block title %}Acceso · Registros de Jornada{% endblock %}
+
+{% block content %}
+<form class="auth-card" method="post" action="/login" autocomplete="off">
+    <div class="auth-card__head">
+        <div class="kicker">ACCESO</div>
+        <h1 class="h1">Identifícate</h1>
+        <p class="sub">Introduce tu DNI para entrar en tu área personal.</p>
+    </div>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <div class="field">
+        <label class="field__label" for="dni">DNI</label>
+        <input
+            class="input"
+            type="text"
+            id="dni"
+            name="dni"
+            value="{{ dni or '' }}"
+            autofocus
+            autocapitalize="characters"
+            spellcheck="false"
+            maxlength="9"
+            required
+        >
+    </div>
+
+    <button type="submit" class="btn btn--primary auth-submit">ENTRAR</button>
+
+    <p class="auth-hint">
+        ¿No tienes acceso? Solicita al administrador que te dé de alta.
+    </p>
+</form>
+{% endblock %}

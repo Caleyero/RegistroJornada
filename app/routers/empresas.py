@@ -1,33 +1,31 @@
-"""CRUD de empresas."""
-
-from pathlib import Path
+"""CRUD de empresas (solo admin)."""
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import Empresa
+from app.templating import render
 
 
-router = APIRouter(prefix="/empresas", tags=["empresas"])
-templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
+router = APIRouter(
+    prefix="/empresas",
+    tags=["empresas"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("", response_class=HTMLResponse, name="empresas_list")
 def list_empresas(request: Request, db: Session = Depends(get_db)):
     empresas = db.query(Empresa).order_by(Empresa.nombre).all()
-    return templates.TemplateResponse("empresas/list.html", {
-        "request": request, "empresas": empresas,
-    })
+    return render(request, db, "empresas/list.html", empresas=empresas)
 
 
 @router.get("/nueva", response_class=HTMLResponse, name="empresas_new")
-def new_empresa_form(request: Request):
-    return templates.TemplateResponse("empresas/form.html", {
-        "request": request, "empresa": None,
-    })
+def new_empresa_form(request: Request, db: Session = Depends(get_db)):
+    return render(request, db, "empresas/form.html", empresa=None)
 
 
 @router.post("/nueva", name="empresas_create")
@@ -58,9 +56,7 @@ def edit_empresa_form(empresa_id: int, request: Request, db: Session = Depends(g
     empresa = db.get(Empresa, empresa_id)
     if not empresa:
         raise HTTPException(status_code=404, detail="Empresa no encontrada.")
-    return templates.TemplateResponse("empresas/form.html", {
-        "request": request, "empresa": empresa,
-    })
+    return render(request, db, "empresas/form.html", empresa=empresa)
 
 
 @router.post("/{empresa_id}/editar", name="empresas_update")
