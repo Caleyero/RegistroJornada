@@ -42,6 +42,42 @@ bash run.sh
 
 Abre <http://127.0.0.1:8600/> en el navegador.
 
+## Setup en una nueva máquina (Windows + WSL Ubuntu)
+
+```cmd
+:: 1) Clonar el repo en cualquier ruta de Windows
+git clone https://github.com/Caleyero/RegistroJornada.git
+cd RegistroJornada
+```
+
+Después, una sola vez, dentro de WSL:
+
+```bash
+# (Sustituye la ruta por la real donde clonaste)
+cd /mnt/c/Users/<tu-usuario>/Documentos/RegistroJornada
+pip3 install -r requirements.txt
+```
+
+A partir de aquí:
+
+- **Doble-click en `menu.bat`** → menú interactivo con 4 opciones:
+  1. Estado del repo (`estado.bat`)
+  2. Bajar cambios desde GitHub (`bajar.bat`)
+  3. Subir cambios a GitHub (`subir.bat`)
+  4. Arrancar la app (`start.bat` — uvicorn + abre el navegador)
+- O usa los `.bat` sueltos directamente.
+
+La BBDD SQLite se crea automáticamente al primer arranque dentro de `data/`,
+que está en `.gitignore`. Si quieres llevarte los datos de otra máquina, copia
+`data/registro.db` aparte (no por git).
+
+### Requisitos en la nueva máquina
+
+- WSL2 con distro **Ubuntu** (si tu distro tiene otro nombre, edita `-d Ubuntu`
+  en los `.bat` de la raíz o usa `wsl -l -q` para ver el nombre real).
+- Python 3.10+ en WSL (`python3 --version`).
+- Acceso al repo en GitHub (token HTTPS o clave SSH).
+
 ## Estructura
 
 ```
