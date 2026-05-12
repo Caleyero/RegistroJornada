@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Centros de trabajo{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Maestros / Centros</div>
+        <h1 class="h1">Centros de trabajo</h1>
+        <div class="sub">Tiendas, oficinas o almacenes asignados a cada empresa.</div>
+    </div>
+    <div class="actions">
+        <a href="/centros/nuevo" class="btn btn--primary">+ NUEVO CENTRO</a>
+    </div>
+</header>
+
+{% if centros %}
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>NOMBRE</th>
+                <th>EMPRESA</th>
+                <th>CIUDAD</th>
+                <th>CÓDIGO</th>
+                <th class="col-center">ACTIVO</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in centros %}
+            <tr>
+                <td>
+                    <div class="strong">{{ c.nombre }}</div>
+                    {% if c.direccion %}<div class="small">{{ c.direccion }}</div>{% endif %}
+                </td>
+                <td>{{ c.empresa.nombre if c.empresa else "—" }}</td>
+                <td>{{ c.ciudad or "—" }}{% if c.provincia %} <span class="small">({{ c.provincia }})</span>{% endif %}</td>
+                <td>{{ c.codigo_centro or "—" }}</td>
+                <td class="col-center">
+                    {% if c.activo %}<span class="tag tag--on">SÍ</span>
+                    {% else %}<span class="tag tag--off">NO</span>{% endif %}
+                </td>
+                <td class="col-actions">
+                    <a href="/centros/{{ c.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    <form method="post" action="/centros/{{ c.id }}/eliminar" style="display:inline;"
+                          onsubmit="return confirm('¿Eliminar el centro {{ c.nombre|e }}?');">
+                        <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">
+    Aún no hay centros. <a href="/centros/nuevo">Crea el primero →</a>
+</div>
+{% endif %}
+{% endblock %}

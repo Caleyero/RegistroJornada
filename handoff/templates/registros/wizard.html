@@ -1,0 +1,712 @@
+{% extends "base.html" %}
+{% block title %}Generar registro mensual{% endblock %}
+
+{% block extra_css %}
+<link href="{{ url_for('static', path='css/registros-wizard.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+  
+    <header class="page__head">
+      <div>
+        <div class="kicker">Registros / Nuevo</div>
+        <h1 class="h1">Asistente de registro mensual</h1>
+        <div class="sub">Genera la hoja mensual de jornada en PDF. Los parámetros quedan guardados en BBDD.</div>
+      </div>
+      <div class="actions">
+        <span class="status" id="status"><span class="dot"></span><span id="statusText">SIN CAMBIOS</span></span>
+        <button class="btn btn--ghost" id="btnClear">Limpiar</button>
+        <button class="btn btn--primary" id="btnGenerar">↓ Generar PDF y guardar</button>
+      </div>
+    </header>
+  
+    <form id="formAsistente" class="layout" onsubmit="return false;">
+  
+      <!-- ──────────── Columna formulario (acordeón) ──────────── -->
+      <div class="col-form">
+  
+        <!-- Bloque 1: Empleado y periodo -->
+        <section class="block is-open" data-block="1">
+          <header class="block__head" tabindex="0">
+            <span class="block__num">1</span>
+            <span class="block__title">EMPLEADO Y PERIODO</span>
+            <span class="block__summary" id="sum1">—</span>
+            <span class="block__chev">▾</span>
+          </header>
+          <div class="block__body">
+            <div class="grid grid-3">
+              <div class="field">
+                <label class="field__label">Empleado</label>
+                              <select id="empleado" class="select" required>
+                  <option value="">— Selecciona empleado —</option>
+                  {% for e in empleados_lista %}
+                  <option value="{{ e.id }}"
+                          data-empresa="{{ e.empresa.nombre if e.empresa else '' }}"
+                          data-centro="{{ e.centro_trabajo.nombre if e.centro_trabajo else '' }}">
+                    {{ e.apellidos }}, {{ e.nombre }} ({{ e.nif }})
+                  </option>
+                  {% endfor %}
+                </select>
+                <div class="field__hint" id="empleadoInfo">DISTEXARY SL · OFICINAS Y ALMACÉN</div>
+              </div>
+              <div class="field">
+                <label class="field__label">Año</label>
+                <input id="anio" type="number" min="2020" max="2099" value="2026" class="input" required>
+              </div>
+              <div class="field">
+                <label class="field__label">Mes</label>
+                <select id="mes" class="select" required>
+                  <option value="1">01 — Enero</option>
+                  <option value="2">02 — Febrero</option>
+                  <option value="3">03 — Marzo</option>
+                  <option value="4">04 — Abril</option>
+                  <option value="5" selected>05 — Mayo</option>
+                  <option value="6">06 — Junio</option>
+                  <option value="7">07 — Julio</option>
+                  <option value="8">08 — Agosto</option>
+                  <option value="9">09 — Septiembre</option>
+                  <option value="10">10 — Octubre</option>
+                  <option value="11">11 — Noviembre</option>
+                  <option value="12">12 — Diciembre</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+  
+        <!-- Bloque 2: Horario tipo -->
+        <section class="block is-open" data-block="2">
+          <header class="block__head" tabindex="0">
+            <span class="block__num">2</span>
+            <span class="block__title">HORARIO TIPO</span>
+            <span class="block__summary" id="sum2">L–V · 10:00 → 18:30</span>
+            <span class="block__chev">▾</span>
+          </header>
+          <div class="block__body">
+            <div class="dias" role="group" aria-label="Días laborables">
+              <span class="field__label" style="margin-right:8px;">DÍAS</span>
+              <button type="button" class="dia is-on" data-dia="0">L</button>
+              <button type="button" class="dia is-on" data-dia="1">M</button>
+              <button type="button" class="dia is-on" data-dia="2">X</button>
+              <button type="button" class="dia is-on" data-dia="3">J</button>
+              <button type="button" class="dia is-on" data-dia="4">V</button>
+              <button type="button" class="dia" data-dia="5">S</button>
+              <button type="button" class="dia" data-dia="6">D</button>
+              <span class="dias__meta" id="diasMeta">5 días/semana</span>
+            </div>
+  
+            <div class="horario">
+              <span class="horario__label">INICIO</span>
+              <input id="inicio_jornada" type="time" class="input" value="10:00" required>
+              <span class="horario__label">PAUSA</span>
+              <input id="inicio_pausa" type="time" class="input" value="14:00" required>
+              <span class="horario__label">VUELTA</span>
+              <input id="fin_pausa" type="time" class="input" value="14:30" required>
+              <span class="horario__label">FIN</span>
+              <input id="fin_jornada" type="time" class="input" value="18:30" required>
+            </div>
+  
+            <div class="hint" style="margin-top:10px;">
+              <span id="horarioResumen">10:00 → 14:00 · pausa 30′ · 14:30 → 18:30</span>
+              &nbsp; · &nbsp; <strong id="horarioTotal">8:00 h/día</strong>
+            </div>
+          </div>
+        </section>
+  
+        <!-- Bloque 3: Eventos del mes (tabs) -->
+        <section class="block is-open" data-block="3">
+          <header class="block__head" tabindex="0">
+            <span class="block__num">3</span>
+            <span class="block__title">EVENTOS DEL MES</span>
+            <span class="block__summary" id="sum3">2 festivos · 0 vacaciones · 0 ausencias</span>
+            <span class="block__chev">▾</span>
+          </header>
+          <div class="block__body">
+            <nav class="tabs" role="tablist">
+              <button type="button" class="tab is-active" data-tab="festivos">FESTIVOS <span class="count" id="cntFest">2</span></button>
+              <button type="button" class="tab" data-tab="vacaciones">VACACIONES <span class="count" id="cntVac">0</span></button>
+              <button type="button" class="tab" data-tab="ausencias">AUSENCIAS <span class="count" id="cntAus">0</span></button>
+            </nav>
+  
+            <!-- Tab Festivos -->
+            <div class="tab-panel is-active" data-panel="festivos">
+              <p class="hint" style="margin: 0 0 8px;">
+                Auto-rellenados del calendario de Asturias. Quita los que no apliquen
+                o añade alguno propio.
+              </p>
+              <div class="add-row">
+                <input id="nuevoFestivoFecha" type="date" class="input input--date">
+                <input id="nuevoFestivoDesc" type="text" class="input" placeholder="Descripción (ej. Día local)">
+                <button type="button" class="btn btn--sm" id="btnAddFestivo">+ Añadir festivo</button>
+              </div>
+              <table class="events" id="tblFestivos">
+                <thead><tr>
+                  <th style="width: 120px;">FECHA</th>
+                  <th style="width: 50px;">DÍA</th>
+                  <th>DESCRIPCIÓN</th>
+                  <th style="width: 80px;">ORIGEN</th>
+                  <th style="width: 70px;"></th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+  
+            <!-- Tab Vacaciones -->
+            <div class="tab-panel" data-panel="vacaciones">
+              <label class="vac-toggle">
+                <input type="checkbox" id="haVacaciones">
+                El empleado disfrutó de vacaciones este mes
+              </label>
+              <div id="bloqueVacaciones" class="hidden">
+                <p class="hint" style="margin: 0 0 8px;">
+                  Indica el rango o ajusta día a día pinchando en el calendario.
+                  <kbd>Mayús+clic</kbd> marca rango.
+                </p>
+                <div class="add-row">
+                  <input id="vacDesde" type="date" class="input input--date" aria-label="Desde">
+                  <input id="vacHasta" type="date" class="input input--date" aria-label="Hasta">
+                  <button type="button" class="btn btn--sm" id="btnAddVacaciones">+ Añadir rango</button>
+                </div>
+                <table class="events" id="tblVacaciones">
+                  <thead><tr>
+                    <th style="width: 120px;">FECHA</th>
+                    <th style="width: 50px;">DÍA</th>
+                    <th>NOTA</th>
+                    <th style="width: 70px;"></th>
+                  </tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+  
+            <!-- Tab Ausencias -->
+            <div class="tab-panel" data-panel="ausencias">
+              <p class="hint" style="margin: 0 0 8px;">
+                Días con motivo justificado (cita médica, permiso…). Se marcan igual que los festivos.
+              </p>
+              <div class="add-row">
+                <input id="nuevaAusenciaFecha" type="date" class="input input--date">
+                <input id="nuevaAusenciaDesc" type="text" class="input" placeholder="Motivo (opcional)">
+                <button type="button" class="btn btn--sm" id="btnAddAusencia">+ Añadir ausencia</button>
+              </div>
+              <table class="events" id="tblAusencias">
+                <thead><tr>
+                  <th style="width: 120px;">FECHA</th>
+                  <th style="width: 50px;">DÍA</th>
+                  <th>MOTIVO</th>
+                  <th style="width: 70px;"></th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+  
+      <!-- ──────────── Columna preview (sticky) ──────────── -->
+      <aside class="preview" aria-label="Vista previa del mes">
+        <header class="preview__head">
+          <div class="preview__kicker">VISTA PREVIA · CALENDARIO</div>
+          <div class="preview__title">
+            <h2 id="previewMes">Mayo 2026</h2>
+            <small id="previewEmpleado">REDONDO RODRÍGUEZ</small>
+          </div>
+        </header>
+        <div class="preview__body">
+          <div class="cal" id="cal">
+            <div class="cal__head">LUN</div>
+            <div class="cal__head">MAR</div>
+            <div class="cal__head">MIÉ</div>
+            <div class="cal__head">JUE</div>
+            <div class="cal__head">VIE</div>
+            <div class="cal__head">SÁB</div>
+            <div class="cal__head">DOM</div>
+          </div>
+  
+          <div class="legend">
+            <span><span class="legend__box"></span>Laborable</span>
+            <span><span class="legend__box legend__box--nolab"></span>No laborable</span>
+            <span><span class="legend__box legend__box--festivo"></span>Festivo / Ausencia</span>
+            <span><span class="legend__box legend__box--vac"></span>Vacaciones</span>
+          </div>
+  
+          <div class="total-box">
+            <div class="total-box__num">
+              <div class="total-box__kicker">HORAS DEL MES</div>
+              <div class="total-box__big" id="totalHoras">0:00</div>
+            </div>
+            <table class="total-box__metrics">
+              <tbody>
+                <tr><td>Laborables</td><td><span id="mLab">0</span> d</td></tr>
+                <tr><td>Festivos</td><td><span id="mFest">0</span> d</td></tr>
+                <tr><td>Vacaciones</td><td><span id="mVac">0</span> d</td></tr>
+                <tr><td>Ausencias</td><td><span id="mAus">0</span> d</td></tr>
+              </tbody>
+            </table>
+          </div>
+  
+          <div class="keyhint">
+            <kbd>Clic</kbd> alterna vacaciones · <kbd>Mayús+Clic</kbd> marca rango · <kbd>⌘+S</kbd> generar PDF
+          </div>
+        </div>
+      </aside>
+  
+    </form>
+
+  <script>
+
+// ───────────────────────────────────────────────────────────────────────────
+// Datos inyectados desde Jinja
+// ───────────────────────────────────────────────────────────────────────────
+const FESTIVOS_ASTURIAS = {{ festivos_asturias | tojson }};
+const ANIO_DEFAULT = {{ anio_default }};
+const MES_DEFAULT  = {{ mes_default }};
+const REGISTRO_EXISTENTE = {{ (registro_existente | default(none)) | tojson }};
+
+let festivos   = {};
+let vacaciones = new Set();
+let ausencias  = {};
+let dirty      = false;
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const pad = (n) => String(n).padStart(2, "0");
+const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const WD_LBL = ["lun","mar","mié","jue","vie","sáb","dom"];
+
+// ── Acordeón ────────────────────────────────────────────────────────────────
+$$(".block__head").forEach(h => {
+  h.addEventListener("click", (e) => {
+    if (e.target.closest('input,select,button,textarea,label,a')) return;
+    h.parentElement.classList.toggle("is-open");
+  });
+  h.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      h.parentElement.classList.toggle("is-open");
+    }
+  });
+});
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+$$(".tab").forEach(t => {
+  t.addEventListener("click", () => {
+    $$(".tab").forEach(x => x.classList.remove("is-active"));
+    $$(".tab-panel").forEach(x => x.classList.remove("is-active"));
+    t.classList.add("is-active");
+    document.querySelector(`.tab-panel[data-panel="${t.dataset.tab}"]`).classList.add("is-active");
+  });
+});
+
+// ── Días laborables ─────────────────────────────────────────────────────────
+$$(".dia").forEach(b => {
+  b.addEventListener("click", () => {
+    b.classList.toggle("is-on");
+    markDirty();
+    refrescarCalendario();
+    refrescarResumenes();
+  });
+});
+
+function diasLaborables() {
+  return $$(".dia.is-on").map(b => parseInt(b.dataset.dia));
+}
+
+// ── Empleado ────────────────────────────────────────────────────────────────
+$("#empleado").addEventListener("change", (e) => {
+  const opt = e.target.selectedOptions[0];
+  if (opt && opt.value) {
+    $("#empleadoInfo").textContent = `${opt.dataset.empresa} · ${opt.dataset.centro}`;
+    $("#previewEmpleado").textContent = opt.text.split(",")[0];
+  } else {
+    $("#empleadoInfo").textContent = "Selecciona un empleado";
+    $("#previewEmpleado").textContent = "—";
+  }
+  markDirty(); refrescarResumenes();
+});
+
+// ── Año / Mes ───────────────────────────────────────────────────────────────
+["#anio","#mes"].forEach(s => {
+  $(s).addEventListener("change", () => { refrescarMes(); markDirty(); });
+  $(s).addEventListener("input",  () => { refrescarMes(); markDirty(); });
+});
+
+// ── Horas ───────────────────────────────────────────────────────────────────
+["#inicio_jornada","#inicio_pausa","#fin_pausa","#fin_jornada"].forEach(s => {
+  $(s).addEventListener("input", () => {
+    refrescarCalendario(); refrescarResumenes(); markDirty();
+  });
+});
+
+// ── Festivos add/remove ─────────────────────────────────────────────────────
+$("#btnAddFestivo").addEventListener("click", () => {
+  const f = $("#nuevoFestivoFecha").value;
+  const d = $("#nuevoFestivoDesc").value.trim() || "Festivo";
+  if (!f) return alert("Indica una fecha.");
+  festivos[f] = d;
+  $("#nuevoFestivoFecha").value = "";
+  $("#nuevoFestivoDesc").value = "";
+  pintarFestivos(); refrescarCalendario(); refrescarResumenes(); markDirty();
+});
+
+// ── Vacaciones ──────────────────────────────────────────────────────────────
+$("#haVacaciones").addEventListener("change", (e) => {
+  $("#bloqueVacaciones").classList.toggle("hidden", !e.target.checked);
+  if (!e.target.checked) {
+    vacaciones.clear();
+    pintarVacaciones(); refrescarCalendario(); refrescarResumenes();
+  }
+  markDirty();
+});
+
+$("#btnAddVacaciones").addEventListener("click", () => {
+  const d = $("#vacDesde").value, h = $("#vacHasta").value;
+  if (!d || !h) return alert("Indica fecha 'Desde' y 'Hasta'.");
+  if (d > h) return alert("'Desde' debe ser ≤ 'Hasta'.");
+  const ini = new Date(d + "T00:00:00"), fin = new Date(h + "T00:00:00");
+  let n = 0;
+  for (let cur = new Date(ini); cur <= fin; cur.setDate(cur.getDate()+1)) {
+    const iso = isoDate(cur);
+    if (!vacaciones.has(iso)) { vacaciones.add(iso); n++; }
+  }
+  if (n === 0) alert("Esos días ya estaban marcados.");
+  $("#vacDesde").value = ""; $("#vacHasta").value = "";
+  pintarVacaciones(); refrescarCalendario(); refrescarResumenes(); markDirty();
+});
+
+// ── Ausencias ───────────────────────────────────────────────────────────────
+$("#btnAddAusencia").addEventListener("click", () => {
+  const f = $("#nuevaAusenciaFecha").value;
+  const d = $("#nuevaAusenciaDesc").value.trim() || "Ausencia justificada";
+  if (!f) return alert("Indica una fecha.");
+  ausencias[f] = d;
+  $("#nuevaAusenciaFecha").value = "";
+  $("#nuevaAusenciaDesc").value = "";
+  pintarAusencias(); refrescarCalendario(); refrescarResumenes(); markDirty();
+});
+
+// ── Limpiar / Generar ───────────────────────────────────────────────────────
+$("#btnClear").addEventListener("click", () => {
+  if (!confirm("¿Restaurar todos los campos al estado inicial?")) return;
+  $("#empleado").value = "";
+  $("#anio").value = ANIO_DEFAULT; $("#mes").value = MES_DEFAULT;
+  $("#inicio_jornada").value = "10:00"; $("#inicio_pausa").value = "14:00";
+  $("#fin_pausa").value = "14:30"; $("#fin_jornada").value = "18:30";
+  $$(".dia").forEach((b, i) => b.classList.toggle("is-on", i < 5));
+  $("#haVacaciones").checked = false;
+  $("#bloqueVacaciones").classList.add("hidden");
+  vacaciones.clear();
+  ausencias = {};
+  refrescarMes();
+  pintarVacaciones(); pintarAusencias();
+  dirty = false; updateStatus();
+});
+
+$("#btnGenerar").addEventListener("click", generarPDF);
+
+// ── Calendar click (toggle vacaciones) ──────────────────────────────────────
+let lastClickedISO = null;
+function bindCellClicks() {
+  $$(".cal__cell").forEach(cell => {
+    if (cell.dataset.empty) return;
+    cell.addEventListener("click", (e) => {
+      const iso = cell.dataset.iso;
+      if (!cell.dataset.lab || cell.dataset.fest || cell.dataset.aus) return;
+      // Shift+Click = rango desde el último marcado
+      if (e.shiftKey && lastClickedISO && lastClickedISO !== iso) {
+        const [a, b] = [lastClickedISO, iso].sort();
+        const ini = new Date(a + "T00:00:00"), fin = new Date(b + "T00:00:00");
+        for (let cur = new Date(ini); cur <= fin; cur.setDate(cur.getDate()+1)) {
+          const k = isoDate(cur);
+          // sólo días laborables sin festivo/ausencia
+          if (!vacaciones.has(k)) vacaciones.add(k);
+        }
+      } else {
+        if (vacaciones.has(iso)) vacaciones.delete(iso);
+        else vacaciones.add(iso);
+      }
+      lastClickedISO = iso;
+      if (vacaciones.size > 0 && !$("#haVacaciones").checked) {
+        $("#haVacaciones").checked = true;
+        $("#bloqueVacaciones").classList.remove("hidden");
+      }
+      pintarVacaciones(); refrescarCalendario(); refrescarResumenes(); markDirty();
+    });
+  });
+}
+
+// ── Render / refresh ────────────────────────────────────────────────────────
+function refrescarMes() {
+  const anio = parseInt($("#anio").value), mes = parseInt($("#mes").value);
+  const pref = `${anio}-${pad(mes)}-`;
+  festivos = {};
+  Object.entries(FESTIVOS_ASTURIAS).forEach(([f, d]) => {
+    if (f.startsWith(pref)) festivos[f] = d;
+  });
+  vacaciones = new Set([...vacaciones].filter(f => f.startsWith(pref)));
+  ausencias = Object.fromEntries(Object.entries(ausencias).filter(([f]) => f.startsWith(pref)));
+  pintarFestivos(); pintarVacaciones(); pintarAusencias();
+  refrescarCalendario(); refrescarResumenes();
+}
+
+function minutosJornada() {
+  const m = (s) => {
+    const v = $(s).value; if (!v) return 0;
+    const [h, mm] = v.split(":").map(Number); return h*60 + mm;
+  };
+  return Math.max(0, m("#inicio_pausa") - m("#inicio_jornada"))
+       + Math.max(0, m("#fin_jornada") - m("#fin_pausa"));
+}
+function fmtHM(min) {
+  return `${Math.floor(min/60)}:${pad(min%60)}`;
+}
+
+function refrescarCalendario() {
+  const anio = parseInt($("#anio").value), mes = parseInt($("#mes").value);
+  const labs = diasLaborables();
+  const minutos = minutosJornada();
+  const primer = new Date(anio, mes-1, 1);
+  const diasMes = new Date(anio, mes, 0).getDate();
+  const offset = (primer.getDay() + 6) % 7;
+
+  const cal = $("#cal");
+  // wipe everything except 7 heads
+  cal.querySelectorAll(".cal__cell").forEach(n => n.remove());
+
+  // leading empties
+  for (let i = 0; i < offset; i++) {
+    const c = document.createElement("div");
+    c.className = "cal__cell cal__cell--empty";
+    c.dataset.empty = "1";
+    cal.appendChild(c);
+  }
+
+  let totalMin = 0, nLab = 0, nFest = 0, nVac = 0, nAus = 0;
+  for (let d = 1; d <= diasMes; d++) {
+    const date = new Date(anio, mes-1, d);
+    const wd = (date.getDay() + 6) % 7;
+    const iso = `${anio}-${pad(mes)}-${pad(d)}`;
+    const esLab = labs.includes(wd);
+    const esFest = !!festivos[iso];
+    const esAus = !!ausencias[iso];
+    const esVac = vacaciones.has(iso);
+
+    const c = document.createElement("div");
+    c.className = "cal__cell";
+    c.dataset.iso = iso;
+    if (esLab) c.dataset.lab = "1";
+    if (esFest) c.dataset.fest = "1";
+    if (esAus) c.dataset.aus = "1";
+
+    if (!esLab) c.classList.add("cal__cell--nolab");
+    if (esVac) c.classList.add("cal__cell--vacaciones");
+    if (esFest) c.classList.add("cal__cell--festivo");
+    else if (esAus) c.classList.add("cal__cell--ausencia");
+
+    let tag = "";
+    if (esFest) tag = "FESTIVO";
+    else if (esAus) tag = "AUSENCIA";
+    else if (esVac) tag = "VACAC.";
+
+    c.innerHTML = `
+      <div class="cal__num">
+        <span>${d}</span>
+        <span class="cal__wd">${WD_LBL[wd]}</span>
+      </div>
+      ${tag ? `<div class="cal__tag">${tag}</div>` : ""}
+    `;
+    cal.appendChild(c);
+
+    if (esLab) nLab++;
+    if (esFest) nFest++;
+    if (esAus) nAus++;
+    if (esVac) nVac++;
+    if (esLab && !esFest && !esAus && !esVac) totalMin += minutos;
+  }
+
+  // trailing empties
+  const total = offset + diasMes;
+  const tail = (7 - (total % 7)) % 7;
+  for (let i = 0; i < tail; i++) {
+    const c = document.createElement("div");
+    c.className = "cal__cell cal__cell--empty";
+    c.dataset.empty = "1";
+    cal.appendChild(c);
+  }
+
+  $("#totalHoras").textContent = fmtHM(totalMin);
+  $("#mLab").textContent = nLab;
+  $("#mFest").textContent = nFest;
+  $("#mVac").textContent = nVac;
+  $("#mAus").textContent = nAus;
+  $("#cntFest").textContent = Object.keys(festivos).length;
+  $("#cntVac").textContent = vacaciones.size;
+  $("#cntAus").textContent = Object.keys(ausencias).length;
+
+  bindCellClicks();
+}
+
+function refrescarResumenes() {
+  // Sum 1
+  const opt = $("#empleado").selectedOptions[0];
+  const apellido = opt && opt.value ? opt.text.split(",")[0] : "—";
+  const anio = $("#anio").value, mes = parseInt($("#mes").value);
+  const mesLbl = $("#mes").selectedOptions[0].text;
+  $("#sum1").textContent = (opt && opt.value)
+    ? `${apellido} · ${mesLbl}, ${anio}` : "Sin empleado";
+  // Sum 2
+  const labs = diasLaborables();
+  const lblDias = labs.length === 5 && labs.join() === "0,1,2,3,4"
+    ? "L–V"
+    : labs.length === 0 ? "—"
+    : labs.map(i => ["L","M","X","J","V","S","D"][i]).join("");
+  $("#sum2").textContent = `${lblDias} · ${$("#inicio_jornada").value} → ${$("#fin_jornada").value}`;
+  // Sum 3
+  $("#sum3").textContent =
+    `${Object.keys(festivos).length} festivos · ${vacaciones.size} vacaciones · ${Object.keys(ausencias).length} ausencias`;
+  $("#diasMeta").textContent = `${labs.length} días/semana`;
+  $("#horarioResumen").textContent =
+    `${$("#inicio_jornada").value} → ${$("#inicio_pausa").value} · pausa · ${$("#fin_pausa").value} → ${$("#fin_jornada").value}`;
+  $("#horarioTotal").textContent = `${fmtHM(minutosJornada())} h/día`;
+  // Preview head
+  $("#previewMes").textContent = `${mesLbl.split("—")[1].trim()} ${anio}`;
+  $("#previewEmpleado").textContent = apellido;
+}
+
+function rowRemove(cb) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "events__remove"; b.textContent = "quitar";
+  b.addEventListener("click", cb);
+  return b;
+}
+
+function pintarFestivos() {
+  const tbody = $("#tblFestivos tbody"); tbody.innerHTML = "";
+  const keys = Object.keys(festivos).sort();
+  if (keys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="events__empty">Sin festivos en este mes.</td></tr>`;
+    return;
+  }
+  keys.forEach(f => {
+    const desc = festivos[f];
+    const wd = WD_LBL[(new Date(f + "T00:00:00").getDay() + 6) % 7];
+    const origen = FESTIVOS_ASTURIAS[f] ? "Auto" : "Manual";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${f}</td><td>${wd}</td><td>${desc}</td><td><span class="events__origin">${origen}</span></td><td></td>`;
+    tr.lastElementChild.appendChild(rowRemove(() => {
+      delete festivos[f];
+      pintarFestivos(); refrescarCalendario(); refrescarResumenes(); markDirty();
+    }));
+    tbody.appendChild(tr);
+  });
+}
+function pintarVacaciones() {
+  const tbody = $("#tblVacaciones tbody"); tbody.innerHTML = "";
+  const keys = [...vacaciones].sort();
+  if (keys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="events__empty">Sin días añadidos.</td></tr>`;
+    return;
+  }
+  keys.forEach(f => {
+    const wd = WD_LBL[(new Date(f + "T00:00:00").getDay() + 6) % 7];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${f}</td><td>${wd}</td><td>—</td><td></td>`;
+    tr.lastElementChild.appendChild(rowRemove(() => {
+      vacaciones.delete(f);
+      pintarVacaciones(); refrescarCalendario(); refrescarResumenes(); markDirty();
+    }));
+    tbody.appendChild(tr);
+  });
+}
+function pintarAusencias() {
+  const tbody = $("#tblAusencias tbody"); tbody.innerHTML = "";
+  const keys = Object.keys(ausencias).sort();
+  if (keys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="events__empty">Sin ausencias añadidas.</td></tr>`;
+    return;
+  }
+  keys.forEach(f => {
+    const wd = WD_LBL[(new Date(f + "T00:00:00").getDay() + 6) % 7];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${f}</td><td>${wd}</td><td>${ausencias[f]}</td><td></td>`;
+    tr.lastElementChild.appendChild(rowRemove(() => {
+      delete ausencias[f];
+      pintarAusencias(); refrescarCalendario(); refrescarResumenes(); markDirty();
+    }));
+    tbody.appendChild(tr);
+  });
+}
+
+function markDirty() {
+  dirty = true; updateStatus();
+}
+function updateStatus() {
+  const el = $("#status"), txt = $("#statusText");
+  if (dirty) { el.classList.add("is-dirty"); txt.textContent = "BORRADOR · SIN GUARDAR"; }
+  else       { el.classList.remove("is-dirty"); txt.textContent = "SIN CAMBIOS"; }
+}
+
+// ── Submit ──────────────────────────────────────────────────────────────────
+async function generarPDF() {
+  const empleadoId = $("#empleado").value;
+  if (!empleadoId) return alert("Selecciona un empleado.");
+  const labs = diasLaborables();
+  if (labs.length === 0) return alert("Marca al menos un día laborable.");
+
+  const payload = {
+    empleado_id: parseInt(empleadoId),
+    anio: parseInt($("#anio").value),
+    mes: parseInt($("#mes").value),
+    dias_laborables: labs,
+    inicio_jornada: $("#inicio_jornada").value,
+    inicio_pausa:   $("#inicio_pausa").value,
+    fin_pausa:      $("#fin_pausa").value,
+    fin_jornada:    $("#fin_jornada").value,
+    festivos: festivos,
+    vacaciones: [...vacaciones],
+    ausencias: ausencias,
+  };
+
+  const btn = $("#btnGenerar");
+  btn.disabled = true;
+  const oldHTML = btn.innerHTML;
+  btn.innerHTML = "Generando…";
+
+  try {
+    const resp = await fetch("/registros/generar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const cd = resp.headers.get("Content-Disposition") || "";
+    const m = cd.match(/filename="([^"]+)"/);
+    a.href = url;
+    a.download = m ? m[1] : "registro_mensual.pdf";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    dirty = false; updateStatus();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = oldHTML;
+  }
+}
+
+// ── Atajos teclado ──────────────────────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault(); generarPDF();
+  }
+});
+
+// ── Init ────────────────────────────────────────────────────────────────────
+refrescarMes();
+refrescarResumenes();
+  </script>
+{% endblock %}

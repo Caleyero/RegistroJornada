@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Generador de Registros{% endblock %}</title>
+    <link href="{{ url_for('static', path='css/app.css') }}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<nav class="nav">
+    <a class="nav__brand" href="/">REGISTROS · JORNADA</a>
+    <a class="nav__link {% if request.url.path == '/' %}is-active{% endif %}" href="/">DASHBOARD</a>
+    <a class="nav__link {% if request.url.path.startswith('/empresas') %}is-active{% endif %}" href="/empresas">EMPRESAS</a>
+    <a class="nav__link {% if request.url.path.startswith('/centros') %}is-active{% endif %}" href="/centros">CENTROS</a>
+    <a class="nav__link {% if request.url.path.startswith('/empleados') %}is-active{% endif %}" href="/empleados">EMPLEADOS</a>
+    <a class="nav__link {% if request.url.path == '/registros' or request.url.path.startswith('/registros/') and '/nuevo' not in request.url.path %}is-active{% endif %}" href="/registros">HISTORIAL</a>
+    <a class="nav__link {% if '/registros/nuevo' in request.url.path %}is-active{% endif %}" href="/registros/nuevo">+ NUEVO REGISTRO</a>
+    <span class="nav__meta">v1.0</span>
+</nav>
+
+<div class="page">
+    {% block content %}{% endblock %}
+</div>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

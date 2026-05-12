@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{% if centro %}Editar{% else %}Nuevo{% endif %} centro{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Centros / {% if centro %}Editar{% else %}Nuevo{% endif %}</div>
+        <h1 class="h1">{% if centro %}{{ centro.nombre }}{% else %}Nuevo centro de trabajo{% endif %}</h1>
+        {% if centro and centro.empresa %}<div class="sub">{{ centro.empresa.nombre }}</div>{% endif %}
+    </div>
+</header>
+
+{% if not empresas %}
+<div class="alert">
+    No hay empresas creadas todavía. <a href="/empresas/nueva">Crea una empresa</a> primero.
+</div>
+{% endif %}
+
+<form method="post"
+      action="{% if centro %}/centros/{{ centro.id }}/editar{% else %}/centros/nuevo{% endif %}"
+      class="panel" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">DATOS DEL CENTRO</span>
+    </div>
+    <div class="panel__body">
+        <div class="grid grid-2 mb-2">
+            <div class="field">
+                <label class="field__label">Empresa <span class="req">*</span></label>
+                <select name="empresa_id" class="select" required {% if not empresas %}disabled{% endif %}>
+                    <option value="">— Selecciona —</option>
+                    {% for e in empresas %}
+                    <option value="{{ e.id }}"
+                            {% if centro and centro.empresa_id == e.id %}selected{% endif %}>
+                        {{ e.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label class="field__label">Nombre <span class="req">*</span></label>
+                <input name="nombre" class="input" required
+                       value="{{ centro.nombre if centro else '' }}">
+            </div>
+        </div>
+
+        <div class="field mb-2">
+            <label class="field__label">Dirección</label>
+            <input name="direccion" class="input"
+                   value="{{ centro.direccion or '' if centro else '' }}">
+        </div>
+
+        <div class="grid grid-3-eq mb-2">
+            <div class="field">
+                <label class="field__label">Ciudad</label>
+                <input name="ciudad" class="input"
+                       value="{{ centro.ciudad or '' if centro else '' }}">
+            </div>
+            <div class="field">
+                <label class="field__label">Provincia</label>
+                <input name="provincia" class="input"
+                       value="{{ centro.provincia or '' if centro else 'Asturias' }}">
+            </div>
+            <div class="field">
+                <label class="field__label">Código postal</label>
+                <input name="codigo_postal" class="input" maxlength="5"
+                       value="{{ centro.codigo_postal or '' if centro else '' }}">
+            </div>
+        </div>
+
+        <div class="grid grid-2">
+            <div class="field">
+                <label class="field__label">Código interno del centro</label>
+                <input name="codigo_centro" class="input" maxlength="20"
+                       value="{{ centro.codigo_centro or '' if centro else '' }}">
+            </div>
+            <div class="field" style="justify-content: flex-end;">
+                <label class="check">
+                    <input type="checkbox" name="activo"
+                           {% if centro is none or centro.activo %}checked{% endif %}>
+                    Centro activo
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="panel__foot">
+        <a href="/centros" class="btn btn--ghost">CANCELAR</a>
+        <button class="btn btn--primary" type="submit" {% if not empresas %}disabled{% endif %}>
+            {% if centro %}GUARDAR CAMBIOS{% else %}CREAR CENTRO{% endif %}
+        </button>
+    </div>
+</form>
+{% endblock %}

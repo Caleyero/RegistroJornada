@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }}{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Dashboard</div>
+        <h1 class="h1">{{ app_name }}</h1>
+        <div class="sub">Resumen del estado actual del sistema.</div>
+    </div>
+    <div class="actions">
+        <a href="/registros/nuevo" class="btn btn--primary">+ NUEVO REGISTRO</a>
+    </div>
+</header>
+
+<div class="stats">
+    <a href="/empresas" class="stat">
+        <div class="stat__kicker">Empresas</div>
+        <div class="stat__big">{{ total_empresas }}</div>
+        <div class="stat__sub">Gestionar →</div>
+    </a>
+    <a href="/centros" class="stat">
+        <div class="stat__kicker">Centros de trabajo</div>
+        <div class="stat__big">{{ total_centros }}</div>
+        <div class="stat__sub">Gestionar →</div>
+    </a>
+    <a href="/empleados" class="stat">
+        <div class="stat__kicker">Empleados</div>
+        <div class="stat__big">{{ total_empleados }}</div>
+        <div class="stat__sub">Gestionar →</div>
+    </a>
+    <a href="/registros" class="stat">
+        <div class="stat__kicker">Registros generados</div>
+        <div class="stat__big">{{ total_registros }}</div>
+        <div class="stat__sub">Ver historial →</div>
+    </a>
+</div>
+
+<div class="alert">
+    Esta aplicación genera la <strong>Hoja Mensual de Registro de Jornada</strong> en PDF.
+    Los parámetros utilizados se guardan en BBDD para regenerar el documento o editarlo
+    en cualquier momento.
+</div>
+{% endblock %}

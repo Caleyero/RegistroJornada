@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{% if empresa %}Editar{% else %}Nueva{% endif %} empresa{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Empresas / {% if empresa %}Editar{% else %}Nueva{% endif %}</div>
+        <h1 class="h1">{% if empresa %}{{ empresa.nombre }}{% else %}Nueva empresa{% endif %}</h1>
+        {% if empresa %}<div class="sub">CIF {{ empresa.cif }}</div>{% endif %}
+    </div>
+</header>
+
+<form method="post"
+      action="{% if empresa %}/empresas/{{ empresa.id }}/editar{% else %}/empresas/nueva{% endif %}"
+      class="panel" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">DATOS DE LA EMPRESA</span>
+    </div>
+    <div class="panel__body">
+        <div class="grid grid-form mb-2">
+            <div class="field">
+                <label class="field__label">Nombre <span class="req">*</span></label>
+                <input name="nombre" class="input" required
+                       value="{{ empresa.nombre if empresa else '' }}">
+            </div>
+            <div class="field">
+                <label class="field__label">CIF <span class="req">*</span></label>
+                <input name="cif" class="input" required maxlength="9"
+                       value="{{ empresa.cif if empresa else '' }}">
+            </div>
+        </div>
+
+        <div class="field mb-2">
+            <label class="field__label">Dirección</label>
+            <input name="direccion" class="input"
+                   value="{{ empresa.direccion or '' if empresa else '' }}">
+        </div>
+
+        <div class="grid grid-2">
+            <div class="field">
+                <label class="field__label">Código de Cuenta de Cotización (C.C.C.)</label>
+                <input name="codigo_cuenta_cotizacion" class="input" maxlength="15"
+                       value="{{ empresa.codigo_cuenta_cotizacion or '' if empresa else '' }}">
+            </div>
+            <div class="field" style="justify-content: flex-end;">
+                <label class="check">
+                    <input type="checkbox" name="activa"
+                           {% if empresa is none or empresa.activa %}checked{% endif %}>
+                    Empresa activa
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="panel__foot">
+        <a href="/empresas" class="btn btn--ghost">CANCELAR</a>
+        <button class="btn btn--primary" type="submit">
+            {% if empresa %}GUARDAR CAMBIOS{% else %}CREAR EMPRESA{% endif %}
+        </button>
+    </div>
+</form>
+{% endblock %}

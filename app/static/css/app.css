@@ -1,0 +1,775 @@
+/* ============================================================================
+ * Wizard de "Nuevo registro mensual" — variante V2
+ * Apéndice a app/static/css/custom.css (o archivo independiente importado
+ * desde base.html). Tokens monocromos + Consolas en datos.
+ * ========================================================================== */
+
+:root {
+    --ink:       #111111;
+    --ink-2:     #444444;
+    --ink-3:     #6b6b6b;
+    --ink-4:     #9a9a9a;
+    --bg:        #f5f5f4;
+    --surface:   #ffffff;
+    --surface-2: #fafaf9;
+    --surface-3: #f0f0ee;
+    --border:    #d8d8d6;
+    --border-2:  #ececea;
+    --border-strong: #111111;
+    --tint:      #eef3f7;   /* very soft cool gray-blue */
+    --tint-2:    #dfe7ec;
+    --warn-tint: #f3eedf;   /* soft amber for warning */
+    --mono: Consolas, "Liberation Mono", Menlo, Monaco, "Courier New", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  button { font-family: inherit; }
+  input, select, textarea { font-family: inherit; color: var(--ink); }
+
+  /* ── Navbar ──────────────────────────────────────────────────────────── */
+  .nav {
+    display: flex; align-items: center; gap: 2px;
+    height: 44px; padding: 0 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .nav__brand {
+    font-family: var(--mono); font-weight: 700;
+    letter-spacing: 0.14em; font-size: 13px;
+    margin-right: 28px; display: flex; align-items: center; gap: 8px;
+  }
+  .nav__brand::before {
+    content: ""; width: 14px; height: 14px;
+    border: 1.5px solid var(--ink);
+  }
+  .nav__link {
+    padding: 6px 12px; font-family: var(--mono); font-size: 13px;
+    color: var(--ink-3); text-decoration: none; letter-spacing: 0.04em;
+  }
+  .nav__link:hover { color: var(--ink); background: var(--surface-3); }
+  .nav__link.is-active {
+    color: var(--ink); background: var(--surface-3);
+    font-weight: 700; box-shadow: inset 0 -2px 0 0 var(--ink);
+  }
+  .nav__meta {
+    margin-left: auto;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-4);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Page header ─────────────────────────────────────────────────────── */
+  .page {
+    padding: 20px 32px 40px;
+    max-width: none; margin: 0;
+  }
+  .page__head {
+    display: flex; align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .kicker {
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.16em; color: var(--ink-4);
+    text-transform: uppercase;
+  }
+  .h1 {
+    margin: 4px 0 4px;
+    font-size: 23px; font-weight: 700; letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+  .sub { font-size: 13px; color: var(--ink-3); }
+  .actions { display: flex; align-items: center; gap: 8px; }
+  .status {
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.08em; color: var(--ink-3);
+    padding: 4px 10px; border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .status .dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--ink-4);
+    margin-right: 6px; vertical-align: 0;
+  }
+  .status.is-dirty .dot { background: var(--ink); }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    font-family: var(--mono); font-size: 13px;
+    letter-spacing: 0.06em;
+    border: 1px solid var(--ink);
+    background: var(--surface); color: var(--ink);
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn--primary { background: var(--ink); color: #fff; font-weight: 700; }
+  .btn--primary:hover { background: var(--ink-2); }
+  .btn--ghost { border-color: var(--border); color: var(--ink-2); }
+  .btn--ghost:hover { background: var(--surface-3); color: var(--ink); }
+  .btn--sm { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Layout grid ─────────────────────────────────────────────────────── */
+  /* Form izquierda más estrecho, calendario derecha más ancho.
+     En viewports muy grandes el calendario crece hasta 900px. */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(640px, 1.4fr);
+    gap: 18px;
+    align-items: flex-start;
+  }
+  @media (max-width: 1280px) {
+    .layout { grid-template-columns: minmax(0, 1fr) 560px; }
+  }
+  @media (max-width: 1180px) {
+    .layout { grid-template-columns: 1fr; }
+    .preview { position: static !important; }
+  }
+  .col-form { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── Accordion block ─────────────────────────────────────────────────── */
+  .block {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+  }
+  .block__head {
+    display: flex; align-items: center;
+    padding: 9px 14px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-2);
+    cursor: pointer;
+    user-select: none;
+    gap: 10px;
+  }
+  .block.is-open .block__head { border-bottom-color: var(--border-strong); }
+  .block__num {
+    width: 20px; height: 20px;
+    border: 1px solid var(--ink);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    flex: none;
+  }
+  .block__title {
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; font-weight: 700;
+    color: var(--ink);
+  }
+  .block__summary {
+    margin-left: 10px; font-family: var(--mono); font-size: 12px;
+    color: var(--ink-3); letter-spacing: 0.02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .block.is-open .block__summary { display: none; }
+  .block__chev {
+    margin-left: auto; font-family: var(--mono);
+    color: var(--ink-3); transition: transform 150ms ease;
+  }
+  .block.is-open .block__chev { transform: rotate(180deg); color: var(--ink); }
+  .block__body {
+    padding: 14px;
+    display: none;
+  }
+  .block.is-open .block__body { display: block; }
+
+  /* ── Forms ───────────────────────────────────────────────────────────── */
+  .grid { display: grid; gap: 10px; }
+  .grid-3 { grid-template-columns: 2fr 1fr 1.1fr; }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field__label {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+  }
+  .input, .select {
+    width: 100%;
+    height: 32px;
+    padding: 4px 8px;
+    font-family: var(--mono); font-size: 13px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0;
+  }
+  .select {
+    appearance: none; -webkit-appearance: none;
+    padding-right: 24px;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+      linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+    background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .input:focus, .select:focus, textarea:focus {
+    outline: none; border-color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--ink);
+  }
+  .input--inline { width: auto; display: inline-block; }
+  .hint {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-3); letter-spacing: 0.02em;
+  }
+  .field__hint {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); letter-spacing: 0.04em;
+    margin-top: 2px;
+  }
+
+  /* días laborables — squares */
+  .dias {
+    display: flex; gap: 4px; align-items: center;
+  }
+  .dia {
+    width: 32px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--ink);
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    color: var(--ink); cursor: pointer; user-select: none;
+    background: var(--surface);
+    transition: all 100ms ease;
+  }
+  .dia:hover { background: var(--surface-3); }
+  .dia.is-on { background: var(--ink); color: #fff; }
+  .dia.is-on:hover { background: var(--ink-2); }
+  .dias__meta {
+    margin-left: auto; font-family: var(--mono);
+    font-size: 12px; color: var(--ink-3);
+  }
+
+  /* horario inline */
+  .horario {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr auto 1fr auto 1fr;
+    gap: 6px 8px; align-items: center;
+    margin-top: 10px;
+  }
+  .horario__label {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-3); letter-spacing: 0.08em; text-align: right;
+  }
+
+  /* Tabs (eventos del mes) */
+  .tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    margin-bottom: 12px; margin-top: -2px;
+  }
+  .tab {
+    padding: 8px 14px;
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.08em; font-weight: 600;
+    color: var(--ink-3); cursor: pointer;
+    background: transparent; border: 0; border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.is-active {
+    color: var(--ink); border-bottom-color: var(--ink);
+  }
+  .tab .count {
+    margin-left: 6px;
+    font-size: 11px; padding: 0 4px;
+    border: 1px solid currentColor;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.is-active { display: block; }
+
+  /* Add row (festivo/ausencia/vacaciones) */
+  .add-row {
+    display: flex; gap: 6px; align-items: stretch;
+    margin-bottom: 10px;
+  }
+  .add-row .input { height: 28px; font-size: 12px; }
+  .add-row .input--date { max-width: 150px; }
+  .add-row .btn { padding: 4px 12px; height: 28px; }
+
+  /* Event list (table) */
+  .events {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .events thead th {
+    text-align: left; padding: 6px 8px;
+    background: var(--surface-3);
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.08em; color: var(--ink-3);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+  }
+  .events tbody td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-2);
+  }
+  .events tbody tr:hover td { background: var(--surface-2); }
+  .events__remove {
+    background: transparent; border: 0;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); cursor: pointer;
+    padding: 2px 6px;
+    text-decoration: underline;
+  }
+  .events__remove:hover { color: var(--ink); }
+  .events__empty {
+    text-align: center; padding: 16px 8px;
+    color: var(--ink-3); font-family: var(--mono);
+    font-size: 12px; font-style: italic;
+  }
+  .events__origin {
+    display: inline-block; padding: 0 4px;
+    border: 1px solid var(--border); font-size: 11px;
+    letter-spacing: 0.08em; color: var(--ink-3);
+  }
+
+  .vac-toggle {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; background: var(--surface-3);
+    border: 1px solid var(--border-2); margin-bottom: 10px;
+    font-family: var(--mono); font-size: 13px;
+  }
+
+  /* ── Preview (sticky) ────────────────────────────────────────────────── */
+  .preview {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    position: sticky; top: 16px;
+  }
+  .preview__head {
+    padding: 12px 14px 10px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .preview__kicker {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.16em; color: var(--ink-3);
+  }
+  .preview__title {
+    margin: 2px 0 0;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .preview__title h2 {
+    margin: 0; font-size: 19px; font-weight: 700;
+  }
+  .preview__title small {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-3); letter-spacing: 0.04em;
+  }
+  .preview__body { padding: 12px 14px 14px; }
+
+  /* Calendar grid */
+  .cal {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    border-top: 1px solid var(--ink);
+    border-left: 1px solid var(--ink);
+  }
+  .cal__head {
+    padding: 5px 4px;
+    background: var(--ink); color: #fff;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.08em; font-weight: 700;
+    text-align: center;
+    border-right: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .cal__cell {
+    min-height: 58px;
+    padding: 4px 6px 4px 6px;
+    border-right: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--mono);
+    cursor: pointer;
+    user-select: none;
+    transition: background 100ms ease;
+    position: relative;
+  }
+  .cal__cell--empty {
+    background: var(--surface-3); cursor: default;
+  }
+  .cal__cell--nolab { background: var(--surface-3); }
+  /* Rayado oblicuo unificado para los 3 tipos de evento, distinto tono. */
+  .cal__cell--festivo {
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0, transparent 4px,
+        rgba(17,17,17,0.55) 4px, rgba(17,17,17,0.55) 5px),
+      var(--surface);
+    color: var(--ink);
+  }
+  .cal__cell--ausencia {
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0, transparent 4px,
+        rgba(17,17,17,0.30) 4px, rgba(17,17,17,0.30) 5px),
+      var(--surface);
+    color: var(--ink);
+  }
+  .cal__cell--vacaciones {
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0, transparent 4px,
+        rgba(0,80,140,0.30) 4px, rgba(0,80,140,0.30) 5px),
+      var(--tint);
+    color: var(--ink);
+  }
+  .cal__cell:not(.cal__cell--empty):hover {
+    outline: 2px solid var(--ink); outline-offset: -2px;
+  }
+  /* Día seleccionado (multi-selección). */
+  .cal__cell--selected {
+    box-shadow: inset 0 0 0 2px var(--ink);
+  }
+  /* Día con horario propio: badge "H" en la esquina inferior derecha. */
+  .cal__cell--override::after {
+    content: "H";
+    position: absolute; right: 3px; bottom: 2px;
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0 3px;
+    background: var(--ink); color: #fff;
+  }
+  .cal__num {
+    display: flex; align-items: baseline;
+    justify-content: space-between;
+    font-weight: 700; font-size: 14px;
+  }
+  .cal__wd {
+    font-size: 10px; opacity: 0.65; font-weight: 400;
+  }
+  .cal__tag {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.06em; margin-top: 2px;
+  }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-2); margin-top: 12px;
+  }
+  .legend__box {
+    display: inline-block; width: 12px; height: 12px;
+    border: 1px solid var(--border); margin-right: 5px;
+    vertical-align: -2px;
+  }
+  .legend__box--nolab { background: var(--surface-3); }
+  .legend__box--festivo {
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0, transparent 3px,
+        rgba(17,17,17,0.55) 3px, rgba(17,17,17,0.55) 4px),
+      var(--surface);
+  }
+  .legend__box--ausencia {
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0, transparent 3px,
+        rgba(17,17,17,0.30) 3px, rgba(17,17,17,0.30) 4px),
+      var(--surface);
+  }
+  .legend__box--vac {
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0, transparent 3px,
+        rgba(0,80,140,0.30) 3px, rgba(0,80,140,0.30) 4px),
+      var(--tint);
+  }
+
+  /* Total + métricas */
+  .total-box {
+    display: flex; gap: 14px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--ink);
+  }
+  .total-box__num {
+    flex: none;
+  }
+  .total-box__kicker {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.16em; color: var(--ink-3);
+  }
+  .total-box__big {
+    font-family: var(--mono); font-size: 31px;
+    font-weight: 700; line-height: 1;
+    margin-top: 4px; letter-spacing: -0.01em;
+  }
+  .total-box__metrics {
+    margin-left: auto;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-2);
+    border-collapse: collapse;
+  }
+  .total-box__metrics td {
+    padding: 1px 0 1px 12px;
+    text-align: right;
+  }
+  .total-box__metrics td:first-child {
+    text-align: left; color: var(--ink-3);
+    padding-left: 0;
+  }
+
+  .keyhint {
+    margin-top: 10px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-4); letter-spacing: 0.02em;
+  }
+  kbd {
+    font-family: var(--mono); font-size: 11px;
+    padding: 0 4px; border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  /* Inline alerts */
+  .alert {
+    padding: 8px 12px;
+    border-left: 3px solid var(--ink);
+    background: var(--warn-tint);
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  /* tiny utilities */
+  .hidden { display: none !important; }
+  .nowrap { white-space: nowrap; }
+  .mt-1 { margin-top: 6px; }
+  .mt-2 { margin-top: 12px; }
+  .mb-2 { margin-bottom: 12px; }
+  .text-muted { color: var(--ink-3); }
+
+  /* ====================================================================
+   * Componentes globales (CRUDs, dashboard, formularios)
+   * ================================================================== */
+
+  /* Panel de contenido (form/lista). Variante "estática" del .block. */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+  }
+  .panel__head {
+    display: flex; align-items: center;
+    padding: 9px 14px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+    gap: 10px;
+  }
+  .panel__title {
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; font-weight: 700;
+    color: var(--ink);
+  }
+  .panel__body { padding: 16px; }
+  .panel__foot {
+    padding: 12px 16px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-2);
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px;
+  }
+
+  /* Tabla de listado (CRUDs e historial). Más densa que .events. */
+  .list-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono); font-size: 14px;
+    background: var(--surface);
+  }
+  .list-table thead th {
+    text-align: left; padding: 9px 12px;
+    background: var(--ink); color: #fff;
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.10em; font-weight: 700;
+    border-right: 1px solid var(--ink-2);
+  }
+  .list-table thead th:last-child { border-right: 0; }
+  .list-table tbody td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border-2);
+    vertical-align: middle;
+  }
+  .list-table tbody tr:hover td { background: var(--surface-2); }
+  .list-table tbody tr:last-child td { border-bottom: 0; }
+  .list-table .strong { font-weight: 700; color: var(--ink); }
+  .list-table .small {
+    font-size: 12px; color: var(--ink-3); letter-spacing: 0.02em;
+  }
+  .list-table .col-actions {
+    width: 1%; white-space: nowrap; text-align: right;
+  }
+  .list-table .col-center { text-align: center; }
+  .list-table .col-num { text-align: right; }
+
+  /* Badge inline (Sí/No, etiquetas). */
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.10em; font-weight: 700;
+    border: 1px solid var(--ink);
+    background: var(--surface);
+    color: var(--ink);
+    text-transform: uppercase;
+  }
+  .tag--on   { background: var(--ink); color: #fff; }
+  .tag--off  { border-color: var(--border); color: var(--ink-3); }
+
+  /* Botón-icono (editar / eliminar) en celdas de acciones. */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    padding: 0;
+    font-family: var(--mono); font-size: 13px;
+    border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink-2);
+    cursor: pointer;
+  }
+  .icon-btn:hover { background: var(--surface-3); color: var(--ink); border-color: var(--ink); }
+  .icon-btn--danger:hover { background: var(--ink); color: #fff; }
+  .icon-btn + .icon-btn { margin-left: 4px; }
+
+  /* Empty state estándar. */
+  .empty {
+    padding: 36px 16px;
+    text-align: center;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    font-family: var(--mono); font-size: 13px;
+    color: var(--ink-3);
+  }
+  .empty a { color: var(--ink); font-weight: 700; }
+
+  /* Dashboard — tiles de contadores. */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .stat {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    padding: 14px 16px;
+    text-decoration: none; color: inherit;
+    transition: background 100ms ease;
+  }
+  .stat:hover {
+    background: var(--surface-2);
+    box-shadow: inset 0 -3px 0 0 var(--ink);
+  }
+  .stat__kicker {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.16em; color: var(--ink-3);
+    text-transform: uppercase;
+  }
+  .stat__big {
+    font-family: var(--mono); font-size: 37px;
+    font-weight: 700; line-height: 1;
+    margin-top: 6px; letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  .stat__sub {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--ink-3); margin-top: 6px;
+    letter-spacing: 0.02em;
+  }
+
+  /* Variantes de grid para formularios. */
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3-eq { grid-template-columns: 1fr 1fr 1fr; }
+  .grid-form { grid-template-columns: 2fr 1fr; }
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .grid-3-eq, .grid-4, .grid-form {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Checkbox bonito. */
+  .check {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 13px;
+    cursor: pointer; user-select: none;
+  }
+  .check input[type="checkbox"] {
+    width: 16px; height: 16px; accent-color: var(--ink);
+  }
+
+  /* Required marker. */
+  .req { color: var(--ink); font-weight: 700; }
+
+  /* Mini-barra de acciones de selección (encima del calendario). */
+  .sel-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--ink);
+  }
+
+  /* ====================================================================
+   * Modal (diálogo de edición de día/horario)
+   * ================================================================== */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    min-width: 480px; max-width: 580px; width: 90%;
+  }
+  .modal__head {
+    padding: 10px 14px;
+    background: var(--ink); color: #fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal__title {
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; font-weight: 700;
+  }
+  .modal__close {
+    background: transparent; color: #fff; border: 0;
+    font-family: var(--mono); font-size: 14px; cursor: pointer;
+    padding: 0 4px;
+  }
+  .modal__close:hover { color: var(--ink-4); }
+  .modal__body  { padding: 16px; }
+  .modal__foot  {
+    padding: 12px 16px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-2);
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+
+  /* Segmented control (selector de tipo de día). */
+  .segmented {
+    display: flex; border: 1px solid var(--ink);
+  }
+  .segmented button {
+    flex: 1; padding: 8px 12px; border: 0;
+    border-right: 1px solid var(--ink);
+    background: var(--surface); color: var(--ink);
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+  }
+  .segmented button:last-child { border-right: 0; }
+  .segmented button:hover { background: var(--surface-3); }
+  .segmented button.is-on {
+    background: var(--ink); color: #fff; font-weight: 700;
+  }

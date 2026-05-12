@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Empleados{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Maestros / Empleados</div>
+        <h1 class="h1">Empleados</h1>
+        <div class="sub">Plantilla disponible para generar registros mensuales.</div>
+    </div>
+    <div class="actions">
+        <a href="/empleados/nuevo" class="btn btn--primary">+ NUEVO EMPLEADO</a>
+    </div>
+</header>
+
+{% if empleados %}
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>APELLIDOS, NOMBRE</th>
+                <th>NIF</th>
+                <th>EMPRESA</th>
+                <th>CENTRO</th>
+                <th>CATEGORÍA</th>
+                <th class="col-center">ACTIVO</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for emp in empleados %}
+            <tr>
+                <td><span class="strong">{{ emp.apellidos }}, {{ emp.nombre }}</span></td>
+                <td>{{ emp.nif }}</td>
+                <td>{{ emp.empresa.nombre if emp.empresa else "—" }}</td>
+                <td>{{ emp.centro_trabajo.nombre if emp.centro_trabajo else "—" }}</td>
+                <td>{{ emp.categoria_profesional or "—" }}</td>
+                <td class="col-center">
+                    {% if emp.activo %}<span class="tag tag--on">SÍ</span>
+                    {% else %}<span class="tag tag--off">NO</span>{% endif %}
+                </td>
+                <td class="col-actions">
+                    <a href="/empleados/{{ emp.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    <form method="post" action="/empleados/{{ emp.id }}/eliminar" style="display:inline;"
+                          onsubmit="return confirm('¿Eliminar a {{ emp.apellidos|e }}, {{ emp.nombre|e }}?');">
+                        <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">
+    Aún no hay empleados. <a href="/empleados/nuevo">Crea el primero →</a>
+</div>
+{% endif %}
+{% endblock %}

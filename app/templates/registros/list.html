@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Historial de registros{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Registros / Historial</div>
+        <h1 class="h1">Registros generados</h1>
+        <div class="sub">Parámetros guardados de cada PDF emitido. Regenera o edita cuando lo necesites.</div>
+    </div>
+    <div class="actions">
+        <a href="/registros/nuevo" class="btn btn--primary">+ NUEVO REGISTRO</a>
+    </div>
+</header>
+
+{% set meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] %}
+
+{% if registros %}
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>PERIODO</th>
+                <th>EMPLEADO</th>
+                <th>EMPRESA</th>
+                <th>HORARIO</th>
+                <th>GENERADO</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in registros %}
+            <tr>
+                <td><span class="strong">{{ meses[r.mes] }} {{ r.anio }}</span></td>
+                <td>
+                    <div class="strong">{{ r.empleado.apellidos }}, {{ r.empleado.nombre }}</div>
+                    <div class="small">{{ r.empleado.nif }}</div>
+                </td>
+                <td>{{ r.empleado.empresa.nombre if r.empleado.empresa else "—" }}</td>
+                <td>{{ r.inicio_jornada }}–{{ r.inicio_pausa }} / {{ r.fin_pausa }}–{{ r.fin_jornada }}</td>
+                <td><span class="small">{{ r.created_at.strftime("%d/%m/%Y %H:%M") if r.created_at else "" }}</span></td>
+                <td class="col-actions">
+                    <a href="/registros/{{ r.id }}/pdf" class="icon-btn" title="Descargar PDF">↓</a>
+                    <a href="/registros/{{ r.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    <form method="post" action="/registros/{{ r.id }}/eliminar" style="display:inline;"
+                          onsubmit="return confirm('¿Eliminar el registro de {{ meses[r.mes] }} {{ r.anio }} de {{ r.empleado.apellidos|e }}?');">
+                        <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">
+    Aún no hay registros guardados. <a href="/registros/nuevo">Genera el primero →</a>
+</div>
+{% endif %}
+{% endblock %}

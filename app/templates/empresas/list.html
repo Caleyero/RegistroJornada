@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Empresas{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Maestros / Empresas</div>
+        <h1 class="h1">Empresas</h1>
+        <div class="sub">Sociedades del grupo. CIF, CCC y datos de cabecera del PDF.</div>
+    </div>
+    <div class="actions">
+        <a href="/empresas/nueva" class="btn btn--primary">+ NUEVA EMPRESA</a>
+    </div>
+</header>
+
+{% if empresas %}
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>NOMBRE</th>
+                <th>CIF</th>
+                <th>C.C.C.</th>
+                <th class="col-center">ACTIVA</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in empresas %}
+            <tr>
+                <td>
+                    <div class="strong">{{ e.nombre }}</div>
+                    {% if e.direccion %}<div class="small">{{ e.direccion }}</div>{% endif %}
+                </td>
+                <td>{{ e.cif }}</td>
+                <td>{{ e.codigo_cuenta_cotizacion or "—" }}</td>
+                <td class="col-center">
+                    {% if e.activa %}<span class="tag tag--on">SÍ</span>
+                    {% else %}<span class="tag tag--off">NO</span>{% endif %}
+                </td>
+                <td class="col-actions">
+                    <a href="/empresas/{{ e.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    <form method="post" action="/empresas/{{ e.id }}/eliminar" style="display:inline;"
+                          onsubmit="return confirm('¿Eliminar la empresa {{ e.nombre|e }}? Se borrarán también sus centros y empleados.');">
+                        <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">
+    Aún no hay empresas. <a href="/empresas/nueva">Crea la primera →</a>
+</div>
+{% endif %}
+{% endblock %}

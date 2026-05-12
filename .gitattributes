@@ -1,0 +1,22 @@
+# Normalizar finales de línea automáticamente.
+* text=auto eol=lf
+
+# Scripts de shell SIEMPRE en LF.
+*.sh text eol=lf
+
+# Batch y PowerShell SIEMPRE en CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios — nunca tocar finales de línea.
+*.ttf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
