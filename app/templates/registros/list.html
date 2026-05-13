@@ -6,12 +6,12 @@
 <header class="page__head">
     <div>
         {% if es_admin %}
-            <div class="kicker">Registros / Historial</div>
-            <h1 class="h1">Registros generados</h1>
-            <div class="sub">Parámetros guardados de cada PDF emitido. Regenera o edita cuando lo necesites.</div>
+            <div class="kicker">Registros / Histórico de PDFs mensuales</div>
+            <h1 class="h1">PDFs mensuales generados</h1>
+            <div class="sub">Cada fila es una hoja mensual firmable. La fuente de verdad del registro diario (art. 34.9 ET) está en <a href="/diario">/diario</a>.</div>
         {% else %}
-            <div class="kicker">Mi área</div>
-            <h1 class="h1">Mis registros</h1>
+            <div class="kicker">Mi área / Histórico de PDFs mensuales</div>
+            <h1 class="h1">Mis PDFs mensuales</h1>
             {% if mi_empleado %}
                 <div class="user-card">
                     <span class="user-card__name">{{ mi_empleado.apellidos }}, {{ mi_empleado.nombre }}</span>
@@ -83,7 +83,9 @@
 </div>
 {% elif not aviso %}
 <div class="empty">
-    Aún no hay registros guardados. <a href="/registros/nuevo">Genera el primero →</a>
+    Aún no hay PDFs mensuales generados. Rellena tu jornada en
+    <a href="/diario">/diario</a> y al cerrar el mes se generará el primero
+    automáticamente. También puedes <a href="/registros/nuevo">crearlo a mano con el asistente →</a>
 </div>
 {% endif %}
 {% endblock %}

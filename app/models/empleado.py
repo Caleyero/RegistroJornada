@@ -46,6 +46,9 @@ class Empleado(Base):
     registros = relationship(
         "Registro", back_populates="empleado", cascade="all, delete-orphan",
     )
+    registros_diarios = relationship(
+        "RegistroDiario", back_populates="empleado", cascade="all, delete-orphan",
+    )
     usuario = relationship("Usuario", back_populates="empleado", uselist=False)
 
     @property

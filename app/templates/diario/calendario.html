@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% set es_admin = current_user and current_user.es_admin %}
+{% set meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] %}
+{% block title %}{{ meses[mes] }} {{ anio }} · Mi jornada{% endblock %}
+
+{% block extra_css %}
+<style>
+  .diario-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .diario-nav { display: flex; align-items: center; gap: 8px; }
+  .diario-nav .label {
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em;
+    padding: 0 8px; min-width: 180px; text-align: center;
+  }
+  .diario-resumen {
+    display: flex; gap: 18px; padding: 8px 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .diario-resumen .stat { display: flex; flex-direction: column; gap: 2px; }
+  .diario-resumen .stat .k {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    color: var(--ink-4); text-transform: uppercase;
+  }
+  .diario-resumen .stat .v {
+    font-family: var(--mono); font-size: 14px; color: var(--ink);
+  }
+  .diario-cerrado-banner {
+    padding: 10px 14px; background: var(--warn-tint);
+    border: 1px solid var(--border-strong);
+    font-size: 13px; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border-strong);
+  }
+  .cal-head {
+    background: var(--ink); color: #fff;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    padding: 6px 8px; text-align: center; text-transform: uppercase;
+  }
+  .cal-cell {
+    background: var(--surface);
+    min-height: 78px;
+    padding: 6px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    text-decoration: none; color: inherit;
+    position: relative;
+  }
+  .cal-cell:hover { background: var(--surface-3); }
+  .cal-cell--out { background: var(--surface-2); color: var(--ink-4); pointer-events: none; }
+  .cal-cell--pendiente {
+    background: repeating-linear-gradient(
+      45deg, var(--surface), var(--surface) 6px,
+      var(--surface-3) 6px, var(--surface-3) 12px);
+  }
+  .cal-cell__num {
+    font-family: var(--mono); font-size: 14px; font-weight: 700;
+  }
+  .cal-cell__num .today {
+    background: var(--ink); color: #fff;
+    padding: 1px 6px; display: inline-block;
+  }
+  .cal-cell__badge {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    padding: 1px 5px; text-transform: uppercase;
+    display: inline-block; align-self: flex-start;
+    border: 1px solid var(--ink);
+  }
+  .badge-trabajado { background: var(--ink); color: #fff; }
+  .badge-festivo { background: var(--warn-tint); }
+  .badge-vacaciones { background: var(--tint-2); }
+  .badge-ausencia { background: var(--surface-3); }
+  .badge-descanso { background: var(--surface-2); color: var(--ink-3); border-color: var(--border); }
+  .badge-pendiente {
+    background: var(--surface); color: var(--ink-3); border-color: var(--border);
+  }
+  .badge-por-confirmar {
+    background: #f7e7a8; color: #5a4500;
+    border-color: #5a4500; font-weight: 700;
+  }
+  .cal-cell--por-confirmar {
+    background: repeating-linear-gradient(
+      45deg, #fff8e1, #fff8e1 6px,
+      #f7e7a8 6px, #f7e7a8 12px);
+  }
+  .diario-aviso-pendientes {
+    padding: 10px 14px; background: #fff8e1;
+    border: 1px solid #5a4500;
+    font-size: 13px; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .cal-cell__horario {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+    margin-top: auto;
+  }
+  .cal-cell__obs {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-3);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cal-cell__override { font-weight: 700; color: var(--ink); }
+  .cal-cell__lock { position: absolute; top: 4px; right: 6px; color: var(--ink-3); font-size: 11px; }
+  .leyenda {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    font-size: 12px; color: var(--ink-3); margin-top: 12px;
+  }
+  .leyenda .dot {
+    display: inline-block; width: 10px; height: 10px;
+    border: 1px solid var(--ink); vertical-align: middle; margin-right: 4px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="page__head">
+  <div>
+    <div class="kicker">{% if es_admin %}Diario · {{ empleado.apellidos }}, {{ empleado.nombre }}{% else %}Mi área{% endif %}</div>
+    <h1 class="h1">{{ meses[mes] }} {{ anio }}</h1>
+    <div class="sub">Registro diario de jornada (art. 34.9 ET). Los días pasados se auto-rellenan con tu horario habitual; edita los que sean distintos.</div>
+  </div>
+  <div class="actions">
+    {% if not cerrado %}
+      <form method="post" action="/diario/{{ anio }}/{{ '%02d' % mes }}/cerrar" style="display:inline">
+        {% if es_admin %}<input type="hidden" name="empleado_id" value="{{ empleado.id }}">{% endif %}
+        <button class="btn btn--primary" type="submit"
+          {% if pendientes_pasados %}disabled title="Quedan {{ pendientes_pasados|length }} día(s) sin confirmar"{% endif %}
+          onclick="return confirm('Se generará el PDF mensual y el mes quedará cerrado. ¿Continuar?');">
+          ↓ Cerrar mes y generar PDF
+        </button>
+      </form>
+    {% else %}
+      <span class="btn btn--ghost" style="cursor:default">MES CERRADO</span>
+      {% if es_admin %}
+      <form method="post" action="/diario/{{ anio }}/{{ '%02d' % mes }}/reabrir" style="display:inline">
+        <input type="hidden" name="empleado_id" value="{{ empleado.id }}">
+        <button class="btn btn--ghost btn--sm" type="submit"
+          onclick="return confirm('¿Reabrir el mes? Los días volverán a ser editables.');">
+          Reabrir
+        </button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</header>
+
+<div class="diario-toolbar">
+  <div class="diario-nav">
+    <a class="btn btn--ghost btn--sm" href="/diario/{{ prev_anio }}/{{ '%02d' % prev_mes }}{{ suffix }}">← {{ meses[prev_mes] }}</a>
+    <span class="label">{{ meses[mes]|upper }} {{ anio }}</span>
+    <a class="btn btn--ghost btn--sm" href="/diario/{{ sig_anio }}/{{ '%02d' % sig_mes }}{{ suffix }}">{{ meses[sig_mes] }} →</a>
+  </div>
+  {% if es_admin %}
+  <div class="diario-nav">
+    <a class="btn btn--ghost btn--sm" href="/diario">Cambiar empleado</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if cerrado %}
+<div class="diario-cerrado-banner">
+  <span>🔒</span>
+  <span>Este mes está <strong>cerrado</strong>. Los días no son editables{% if es_admin %} (puedes reabrirlo){% else %} hasta que el administrador lo reabra{% endif %}.</span>
+</div>
+{% elif pendientes_pasados %}
+<div class="diario-aviso-pendientes">
+  <span>⚠</span>
+  <span>
+    Tienes <strong>{{ pendientes_pasados|length }} día(s) sin confirmar</strong>:
+    {% for f in pendientes_pasados[:6] %}<code>{{ f.isoformat() }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+    {% if pendientes_pasados|length > 6 %} y {{ pendientes_pasados|length - 6 }} más{% endif %}.
+    Hasta que los confirmes, no puedes cerrar el mes.
+  </span>
+</div>
+{% endif %}
+
+<div class="diario-resumen">
+  <div class="stat"><span class="k">Horario habitual</span><span class="v">{{ horario_tipo.inicio_jornada }}–{{ horario_tipo.inicio_pausa }} · {{ horario_tipo.fin_pausa }}–{{ horario_tipo.fin_jornada }}</span></div>
+  <div class="stat"><span class="k">Días trabajados</span><span class="v">{{ dias_trabajados }}</span></div>
+  <div class="stat"><span class="k">Horas trabajadas</span><span class="v">{{ horas_str }}</span></div>
+  <div class="stat"><span class="k">Sin confirmar</span><span class="v">{{ pendientes_pasados|length }}</span></div>
+</div>
+
+<div class="cal-grid">
+  <div class="cal-head">Lun</div>
+  <div class="cal-head">Mar</div>
+  <div class="cal-head">Mié</div>
+  <div class="cal-head">Jue</div>
+  <div class="cal-head">Vie</div>
+  <div class="cal-head">Sáb</div>
+  <div class="cal-head">Dom</div>
+
+  {% for semana in semanas %}
+    {% for cell in semana %}
+      {% if not cell.en_mes %}
+        <div class="cal-cell cal-cell--out">
+          <span class="cal-cell__num">{{ cell.fecha.day }}</span>
+        </div>
+      {% else %}
+        {% set d = cell.dia %}
+        {% set is_pendiente = cell.pendiente %}
+        {% set is_por_confirmar = cell.pendiente_pasado %}
+        {% set cell_class = "cal-cell" %}
+        {% if is_por_confirmar %}{% set cell_class = cell_class ~ " cal-cell--por-confirmar" %}
+        {% elif is_pendiente %}{% set cell_class = cell_class ~ " cal-cell--pendiente" %}{% endif %}
+        <a class="{{ cell_class }}"
+           href="/diario/{{ anio }}/{{ '%02d' % mes }}/{{ cell.fecha.day }}/editar{{ suffix }}">
+          <span class="cal-cell__num">{% if cell.es_hoy %}<span class="today">{{ cell.fecha.day }}</span>{% else %}{{ cell.fecha.day }}{% endif %}</span>
+          {% if is_por_confirmar %}
+            <span class="cal-cell__badge badge-por-confirmar">Por confirmar</span>
+          {% elif is_pendiente %}
+            <span class="cal-cell__badge badge-pendiente">Pendiente</span>
+          {% else %}
+            {% if d.cerrado %}<span class="cal-cell__lock">🔒</span>{% endif %}
+            {% if d.tipo == 'trabajado' %}
+              {% set override = (horario_tipo.inicio_jornada != d.inicio_jornada or horario_tipo.inicio_pausa != d.inicio_pausa or horario_tipo.fin_pausa != d.fin_pausa or horario_tipo.fin_jornada != d.fin_jornada) %}
+              <span class="cal-cell__badge badge-trabajado">Trabajado{% if override %} *{% endif %}</span>
+              <span class="cal-cell__horario {% if override %}cal-cell__override{% endif %}">
+                {{ d.inicio_jornada }}–{{ d.fin_jornada }}
+              </span>
+            {% elif d.tipo == 'festivo' %}
+              <span class="cal-cell__badge badge-festivo">Festivo</span>
+              <span class="cal-cell__obs">{{ d.observaciones or '' }}</span>
+            {% elif d.tipo == 'vacaciones' %}
+              <span class="cal-cell__badge badge-vacaciones">Vacaciones</span>
+              <span class="cal-cell__obs">{{ d.observaciones or '' }}</span>
+            {% elif d.tipo == 'ausencia' %}
+              <span class="cal-cell__badge badge-ausencia">Ausencia</span>
+              <span class="cal-cell__obs">{{ d.observaciones or '' }}</span>
+            {% else %}
+              <span class="cal-cell__badge badge-descanso">Descanso</span>
+            {% endif %}
+          {% endif %}
+        </a>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+</div>
+
+<div class="leyenda">
+  <span><span class="dot" style="background:#111"></span>Trabajado</span>
+  <span><span class="dot" style="background:#f3eedf"></span>Festivo</span>
+  <span><span class="dot" style="background:#dfe7ec"></span>Vacaciones</span>
+  <span><span class="dot" style="background:#f0f0ee"></span>Ausencia</span>
+  <span><span class="dot" style="background:#fafaf9"></span>Descanso</span>
+  <span><span class="dot" style="background:#f7e7a8;border-color:#5a4500"></span>Por confirmar (día pasado)</span>
+  <span><span class="dot" style="background:repeating-linear-gradient(45deg,#fff,#fff 3px,#f0f0ee 3px,#f0f0ee 6px)"></span>Pendiente (futuro)</span>
+  <span>* horario distinto del habitual</span>
+</div>
+{% endblock %}

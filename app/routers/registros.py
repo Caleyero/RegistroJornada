@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_login
 from app.dependencies import get_db
 from app.models import Empleado, Registro, Usuario
-from app.services import pdf_service
+from app.services import diario_service, pdf_service
 from app.services.festivos import FESTIVOS_ASTURIAS
 from app.templating import render
 
@@ -199,6 +199,12 @@ async def generar_pdf(
         raise HTTPException(status_code=400, detail="Marca al menos un día laborable.")
 
     registro = _upsert_registro(db, payload)
+    # El wizard mensual es ahora un mecanismo de regularización: sincronizamos
+    # los RegistroDiario del mes con el contenido del payload y los marcamos
+    # como cerrados. Así diario y mensual permanecen coherentes.
+    diario_service.sincronizar_desde_wizard(
+        db, empleado, payload.anio, payload.mes, payload.model_dump(),
+    )
     pdf_bytes = _generar_pdf_desde_registro(registro)
     return Response(
         content=pdf_bytes,

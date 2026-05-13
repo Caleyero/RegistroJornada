@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Selecciona empleado · Registro diario{% endblock %}
+
+{% block content %}
+<header class="page__head">
+  <div>
+    <div class="kicker">Registro diario · Selección</div>
+    <h1 class="h1">¿Qué empleado quieres consultar?</h1>
+    <div class="sub">El calendario diario aplica a un único empleado. Elige uno para abrir su mes en curso.</div>
+  </div>
+</header>
+
+{% if empleados %}
+<div class="panel">
+  <table class="list-table">
+    <thead>
+      <tr>
+        <th>EMPLEADO</th>
+        <th>NIF</th>
+        <th>EMPRESA</th>
+        <th class="col-actions">ACCIONES</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in empleados %}
+      <tr>
+        <td><span class="strong">{{ e.apellidos }}, {{ e.nombre }}</span></td>
+        <td>{{ e.nif }}</td>
+        <td>{{ e.empresa.nombre if e.empresa else '—' }}</td>
+        <td class="col-actions">
+          <a href="/diario/{{ anio }}/{{ '%02d' % mes }}?empleado_id={{ e.id }}" class="btn btn--primary btn--sm">Abrir calendario</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No hay empleados activos.</div>
+{% endif %}
+{% endblock %}

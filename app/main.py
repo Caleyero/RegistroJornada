@@ -17,7 +17,9 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.dependencies import get_db
 from app.models import CentroTrabajo, Empleado, Empresa, Registro, Usuario
-from app.routers import admin_usuarios, centros, empleados, empresas, registros
+from app.routers import (
+    admin_usuarios, centros, diario, empleados, empresas, registros,
+)
 from app.templating import render
 
 
@@ -105,6 +107,7 @@ app.include_router(empresas.router)
 app.include_router(centros.router)
 app.include_router(empleados.router)
 app.include_router(registros.router)
+app.include_router(diario.router)
 app.include_router(admin_usuarios.router)
 
 
@@ -130,7 +133,7 @@ def home(request: Request, db: Session = Depends(get_db)) -> Response:
         return RedirectResponse("/login", status_code=303)
     if current.es_admin:
         return RedirectResponse("/admin", status_code=303)
-    return RedirectResponse("/registros", status_code=303)
+    return RedirectResponse("/diario", status_code=303)
 
 
 @app.get("/admin", name="admin_dashboard")

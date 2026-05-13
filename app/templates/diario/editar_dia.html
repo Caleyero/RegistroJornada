@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% set es_admin = current_user and current_user.es_admin %}
+{% set meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] %}
+{% set dias_semana_es = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"] %}
+{% block title %}Editar {{ fecha.day }} {{ meses[fecha.month] }} {{ fecha.year }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .edit-card {
+    max-width: 640px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    padding: 18px 22px;
+  }
+  .edit-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .edit-row { display: flex; flex-direction: column; gap: 4px; }
+  .edit-row label {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+  }
+  .edit-row input, .edit-row select, .edit-row textarea {
+    width: 100%; height: 32px; padding: 4px 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    font-family: var(--mono); font-size: 13px;
+  }
+  .edit-row textarea { height: 64px; resize: vertical; }
+  .horarios-row { display: none; }
+  .horarios-row.is-visible { display: grid; }
+  .edit-meta {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    margin-bottom: 12px; padding: 8px 12px;
+    background: var(--surface-2); border: 1px solid var(--border);
+  }
+  .edit-actions { display: flex; gap: 8px; margin-top: 18px; }
+  .cerrado-aviso {
+    padding: 10px 14px; background: var(--warn-tint);
+    border: 1px solid var(--border-strong);
+    font-size: 13px; margin-bottom: 14px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="page__head">
+  <div>
+    <div class="kicker">{% if es_admin %}Diario · {{ empleado.apellidos }}, {{ empleado.nombre }}{% else %}Mi jornada{% endif %} / {{ meses[mes] }} {{ anio }}</div>
+    <h1 class="h1">{{ dias_semana_es[fecha.weekday()] }} {{ fecha.day }} de {{ meses[mes] }} de {{ fecha.year }}</h1>
+    <div class="sub">Fecha en formato registro: <code>{{ fecha.isoformat() }}</code></div>
+  </div>
+  <div class="actions">
+    <a class="btn btn--ghost" href="/diario/{{ anio }}/{{ '%02d' % mes }}{{ suffix }}">← Volver al calendario</a>
+  </div>
+</header>
+
+{% if registro and registro.cerrado %}
+<div class="cerrado-aviso">
+  🔒 Este día pertenece a un mes <strong>cerrado</strong>. No se puede modificar
+  {% if es_admin %}sin reabrir el mes desde el calendario.{% else %}hasta que el administrador reabra el mes.{% endif %}
+</div>
+{% endif %}
+
+<div class="edit-card">
+  <div class="edit-meta">
+    Horario habitual del empleado:
+    <strong>{{ horario_tipo.inicio_jornada }}–{{ horario_tipo.inicio_pausa }}</strong>
+    · pausa ·
+    <strong>{{ horario_tipo.fin_pausa }}–{{ horario_tipo.fin_jornada }}</strong>
+  </div>
+
+  <form method="post" action="/diario/{{ anio }}/{{ '%02d' % mes }}/{{ dia }}">
+    {% if es_admin %}<input type="hidden" name="empleado_id" value="{{ empleado.id }}">{% endif %}
+
+    <div class="edit-row" style="margin-bottom: 12px;">
+      <label for="tipo">Tipo de día</label>
+      <select id="tipo" name="tipo" {% if registro and registro.cerrado %}disabled{% endif %}>
+        {% set actual = registro.tipo if registro else 'trabajado' %}
+        <option value="trabajado" {% if actual == 'trabajado' %}selected{% endif %}>Trabajado</option>
+        <option value="festivo" {% if actual == 'festivo' %}selected{% endif %}>Festivo</option>
+        <option value="vacaciones" {% if actual == 'vacaciones' %}selected{% endif %}>Vacaciones</option>
+        <option value="ausencia" {% if actual == 'ausencia' %}selected{% endif %}>Ausencia justificada</option>
+        <option value="descanso" {% if actual == 'descanso' %}selected{% endif %}>Descanso semanal</option>
+      </select>
+    </div>
+
+    <div id="horarios" class="edit-grid horarios-row {% if not registro or registro.tipo == 'trabajado' %}is-visible{% endif %}">
+      <div class="edit-row">
+        <label for="inicio_jornada">Inicio jornada</label>
+        <input id="inicio_jornada" name="inicio_jornada" type="time"
+               value="{{ (registro.inicio_jornada if registro and registro.tipo == 'trabajado' else horario_tipo.inicio_jornada) or '' }}"
+               {% if registro and registro.cerrado %}disabled{% endif %}>
+      </div>
+      <div class="edit-row">
+        <label for="inicio_pausa">Inicio pausa</label>
+        <input id="inicio_pausa" name="inicio_pausa" type="time"
+               value="{{ (registro.inicio_pausa if registro and registro.tipo == 'trabajado' else horario_tipo.inicio_pausa) or '' }}"
+               {% if registro and registro.cerrado %}disabled{% endif %}>
+      </div>
+      <div class="edit-row">
+        <label for="fin_pausa">Fin pausa</label>
+        <input id="fin_pausa" name="fin_pausa" type="time"
+               value="{{ (registro.fin_pausa if registro and registro.tipo == 'trabajado' else horario_tipo.fin_pausa) or '' }}"
+               {% if registro and registro.cerrado %}disabled{% endif %}>
+      </div>
+      <div class="edit-row">
+        <label for="fin_jornada">Fin jornada</label>
+        <input id="fin_jornada" name="fin_jornada" type="time"
+               value="{{ (registro.fin_jornada if registro and registro.tipo == 'trabajado' else horario_tipo.fin_jornada) or '' }}"
+               {% if registro and registro.cerrado %}disabled{% endif %}>
+      </div>
+    </div>
+
+    <div class="edit-row" style="margin-top: 12px;">
+      <label for="observaciones">Observaciones</label>
+      <textarea id="observaciones" name="observaciones"
+                placeholder="Motivo de la ausencia, descripción del festivo, nota..."
+                {% if registro and registro.cerrado %}disabled{% endif %}>{{ registro.observaciones if registro and registro.observaciones else '' }}</textarea>
+    </div>
+
+    <div class="edit-actions">
+      {% if not registro or not registro.cerrado %}
+      <button type="submit" class="btn btn--primary">Guardar</button>
+      {% endif %}
+      <a class="btn btn--ghost" href="/diario/{{ anio }}/{{ '%02d' % mes }}{{ suffix }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function() {
+    const tipo = document.getElementById("tipo");
+    const horarios = document.getElementById("horarios");
+    function refresh() {
+      if (tipo.value === "trabajado") horarios.classList.add("is-visible");
+      else horarios.classList.remove("is-visible");
+    }
+    tipo.addEventListener("change", refresh);
+    refresh();
+  })();
+</script>
+{% endblock %}
