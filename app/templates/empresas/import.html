@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Importar empresas{% endblock %}
+{% block content %}
+{% set kicker = "Maestros / Empresas" %}
+{% set titulo = "Importar empresas desde Excel" %}
+{% set volver_url = "/empresas" %}
+{% set exportar_url = "/empresas/exportar" %}
+{% set post_url = "/empresas/importar" %}
+{% set columnas = ["id", "nombre", "cif", "direccion", "codigo_cuenta_cotizacion", "activa"] %}
+{% include "_partials/import_excel.html" %}
+{% endblock %}

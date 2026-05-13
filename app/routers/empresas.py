@@ -1,12 +1,15 @@
 """CRUD de empresas (solo admin)."""
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from datetime import date
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import Empresa
+from app.services import excel_service
 from app.templating import render
 
 
@@ -15,6 +18,8 @@ router = APIRouter(
     tags=["empresas"],
     dependencies=[Depends(require_admin)],
 )
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @router.get("", response_class=HTMLResponse, name="empresas_list")
@@ -92,3 +97,30 @@ def delete_empresa(empresa_id: int, db: Session = Depends(get_db)):
     db.delete(empresa)
     db.commit()
     return RedirectResponse("/empresas", status_code=303)
+
+
+@router.get("/exportar", name="empresas_exportar")
+def exportar_empresas(db: Session = Depends(get_db)):
+    contenido = excel_service.exportar_empresas(db)
+    fname = f"empresas_{date.today().isoformat()}.xlsx"
+    return Response(
+        content=contenido,
+        media_type=_XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/importar", response_class=HTMLResponse, name="empresas_importar_form")
+def importar_empresas_form(request: Request, db: Session = Depends(get_db)):
+    return render(request, db, "empresas/import.html", resultado=None)
+
+
+@router.post("/importar", response_class=HTMLResponse, name="empresas_importar")
+async def importar_empresas(
+    request: Request,
+    db: Session = Depends(get_db),
+    archivo: UploadFile = File(...),
+):
+    contenido = await archivo.read()
+    resultado = excel_service.importar_empresas(db, contenido)
+    return render(request, db, "empresas/import.html", resultado=resultado)

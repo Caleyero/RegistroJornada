@@ -1,0 +1,717 @@
+"""Exportación / importación en Excel de las tablas maestras.
+
+Cuatro entidades, una hoja por fichero:
+    - empresas    (clave única: CIF)
+    - centros     (clave única: empresa_cif + codigo_centro / nombre)
+    - empleados   (clave única: NIF)
+    - usuarios    (clave única: DNI)
+
+El import es transaccional y "upsert": si la clave única ya existe, se
+actualiza; si no, se inserta. Cualquier fila inválida aborta el commit.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from io import BytesIO
+from typing import Any, Iterable
+
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font
+from sqlalchemy.orm import Session
+
+from app.models import CentroTrabajo, Empleado, Empresa, Usuario
+
+
+# --- Constantes ---------------------------------------------------------
+
+# Mapeo entre código de día castellano y entero 0..6 (lun..dom).
+_DIA_CODIGOS = ["L", "M", "X", "J", "V", "S", "D"]
+_DIA_A_INT = {c: i for i, c in enumerate(_DIA_CODIGOS)}
+
+_BOOL_TRUE = {"si", "sí", "s", "yes", "y", "true", "1", "verdadero", "v"}
+_BOOL_FALSE = {"no", "n", "false", "0", "falso", "f"}
+
+
+# --- Resultado ----------------------------------------------------------
+
+@dataclass
+class ImportResult:
+    creados: int = 0
+    actualizados: int = 0
+    errores: list[tuple[int, str]] = field(default_factory=list)
+    commit_ok: bool = False
+
+    @property
+    def total_filas_validas(self) -> int:
+        return self.creados + self.actualizados
+
+
+# --- Helpers de parseo --------------------------------------------------
+
+def _norm_str(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, (int, float)):
+        # Evita "1234.0" cuando Excel guarda un código como número.
+        if isinstance(v, float) and v.is_integer():
+            return str(int(v))
+        return str(v)
+    return str(v).strip()
+
+
+def _norm_upper(v: Any) -> str:
+    return _norm_str(v).upper()
+
+
+def _norm_lower(v: Any) -> str:
+    return _norm_str(v).lower()
+
+
+def _to_bool(v: Any, default: bool | None = None) -> bool | None:
+    """Devuelve True/False según el valor, o `default` si la celda está vacía."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return default
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    s = str(v).strip().lower()
+    if s in _BOOL_TRUE:
+        return True
+    if s in _BOOL_FALSE:
+        return False
+    raise ValueError(f"Valor booleano no reconocido: {v!r}")
+
+
+def _bool_to_excel(v: bool | None) -> str:
+    if v is True:
+        return "Sí"
+    if v is False:
+        return "No"
+    return ""
+
+
+def _to_date(v: Any) -> date | None:
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    s = str(v).strip()
+    return datetime.strptime(s, "%Y-%m-%d").date()
+
+
+def _to_horario(v: Any) -> str | None:
+    """Cadena HH:MM o None. Acepta también un datetime.time de Excel."""
+    if v is None:
+        return None
+    if hasattr(v, "hour") and hasattr(v, "minute"):
+        return f"{v.hour:02d}:{v.minute:02d}"
+    s = _norm_str(v)
+    if not s:
+        return None
+    # Validación mínima: tiene que parecer HH:MM
+    try:
+        h, m = s.split(":")
+        return f"{int(h):02d}:{int(m):02d}"
+    except Exception as exc:
+        raise ValueError(f"Horario no reconocido: {v!r} (esperado HH:MM)") from exc
+
+
+def _to_numero(v: Any) -> float | None:
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    return float(str(v).strip().replace(",", "."))
+
+
+def _dias_to_str(dias: list[int] | None) -> str:
+    if not dias:
+        return ""
+    return ",".join(_DIA_CODIGOS[i] for i in sorted(set(dias)) if 0 <= i <= 6)
+
+
+def _str_to_dias(v: Any) -> list[int] | None:
+    s = _norm_upper(v)
+    if not s:
+        return None
+    out: set[int] = set()
+    for token in s.replace(";", ",").split(","):
+        t = token.strip()
+        if not t:
+            continue
+        if t.isdigit():
+            i = int(t)
+            if 0 <= i <= 6:
+                out.add(i)
+                continue
+            raise ValueError(f"Día fuera de rango: {t}")
+        if t in _DIA_A_INT:
+            out.add(_DIA_A_INT[t])
+            continue
+        raise ValueError(f"Día no reconocido: {t!r}")
+    return sorted(out) or None
+
+
+# --- Helpers de export --------------------------------------------------
+
+def _crear_libro(hoja: str, cabeceras: list[str]) -> tuple[Workbook, Any]:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = hoja
+    ws.append(cabeceras)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    return wb, ws
+
+
+def _autosize(ws: Any, datos: Iterable[list[Any]], cabeceras: list[str]) -> None:
+    anchos = [len(h) for h in cabeceras]
+    for fila in datos:
+        for i, valor in enumerate(fila):
+            s = "" if valor is None else str(valor)
+            if len(s) > anchos[i]:
+                anchos[i] = len(s)
+    for i, ancho in enumerate(anchos, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = min(ancho + 2, 60)
+
+
+def _serializar(wb: Workbook) -> bytes:
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _leer_filas(file_bytes: bytes, cabeceras_esperadas: list[str]) -> tuple[list[dict], list[tuple[int, str]]]:
+    """Devuelve (filas, errores). Cada fila es un dict cabecera→valor (None si vacía).
+
+    `errores` solo se rellena en problemas estructurales (cabecera ausente).
+    Filas completamente vacías se descartan en silencio.
+    """
+    errores: list[tuple[int, str]] = []
+    try:
+        wb = load_workbook(BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception as exc:
+        errores.append((0, f"No se pudo abrir el fichero Excel: {exc}"))
+        return [], errores
+    ws = wb.active
+    rows = ws.iter_rows(values_only=True)
+    try:
+        cabeceras = [c for c in next(rows)]
+    except StopIteration:
+        errores.append((0, "El fichero está vacío."))
+        return [], errores
+
+    cabeceras_norm = [(c or "").strip().lower() if isinstance(c, str) else c for c in cabeceras]
+    faltan = [c for c in cabeceras_esperadas if c not in cabeceras_norm]
+    if faltan:
+        errores.append((1, f"Faltan columnas obligatorias: {', '.join(faltan)}"))
+        return [], errores
+
+    filas: list[dict] = []
+    for idx, row in enumerate(rows, start=2):
+        if row is None or all(v is None or (isinstance(v, str) and not v.strip()) for v in row):
+            continue
+        d = {cabeceras_norm[i]: row[i] if i < len(row) else None for i in range(len(cabeceras_norm))}
+        d["__row__"] = idx
+        filas.append(d)
+    return filas, errores
+
+
+# --- Empresas -----------------------------------------------------------
+
+_EMPRESA_CABECERAS = ["id", "nombre", "cif", "direccion", "codigo_cuenta_cotizacion", "activa"]
+
+
+def exportar_empresas(db: Session) -> bytes:
+    empresas = db.query(Empresa).order_by(Empresa.nombre).all()
+    wb, ws = _crear_libro("Empresas", _EMPRESA_CABECERAS)
+    datos = []
+    for e in empresas:
+        fila = [
+            e.id,
+            e.nombre,
+            e.cif,
+            e.direccion or "",
+            e.codigo_cuenta_cotizacion or "",
+            _bool_to_excel(e.activa),
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _EMPRESA_CABECERAS)
+    return _serializar(wb)
+
+
+def importar_empresas(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(file_bytes, ["nombre", "cif"])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    cifs_en_fichero: set[str] = set()
+    pendientes: list[tuple[Empresa | None, dict, int]] = []
+
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            cif = _norm_upper(fila.get("cif"))
+            if not cif:
+                raise ValueError("El CIF es obligatorio.")
+            if cif in cifs_en_fichero:
+                raise ValueError(f"CIF duplicado en el fichero: {cif}")
+            cifs_en_fichero.add(cif)
+            nombre = _norm_str(fila.get("nombre"))
+            if not nombre:
+                raise ValueError("El nombre es obligatorio.")
+            existente = db.query(Empresa).filter(Empresa.cif == cif).one_or_none()
+            pendientes.append((existente, fila, n))
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        return result
+
+    for existente, fila, n in pendientes:
+        cif = _norm_upper(fila.get("cif"))
+        nombre = _norm_str(fila.get("nombre"))
+        direccion = _norm_str(fila.get("direccion")) or None
+        ccc = _norm_str(fila.get("codigo_cuenta_cotizacion")) or None
+        try:
+            activa = _to_bool(fila.get("activa"), default=True if existente is None else existente.activa)
+        except ValueError as exc:
+            result.errores.append((n, f"Columna 'activa': {exc}"))
+            continue
+        if existente is None:
+            db.add(Empresa(
+                nombre=nombre, cif=cif, direccion=direccion,
+                codigo_cuenta_cotizacion=ccc, activa=bool(activa),
+            ))
+            result.creados += 1
+        else:
+            existente.nombre = nombre
+            existente.direccion = direccion
+            existente.codigo_cuenta_cotizacion = ccc
+            existente.activa = bool(activa)
+            result.actualizados += 1
+
+    if result.errores:
+        db.rollback()
+        return result
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+# --- Centros ------------------------------------------------------------
+
+_CENTRO_CABECERAS = [
+    "id", "empresa_cif", "nombre", "direccion", "ciudad", "provincia",
+    "codigo_postal", "codigo_centro", "activo",
+]
+
+
+def exportar_centros(db: Session) -> bytes:
+    centros = (
+        db.query(CentroTrabajo).join(Empresa)
+        .order_by(Empresa.nombre, CentroTrabajo.nombre).all()
+    )
+    wb, ws = _crear_libro("Centros", _CENTRO_CABECERAS)
+    datos = []
+    for c in centros:
+        fila = [
+            c.id,
+            c.empresa.cif if c.empresa else "",
+            c.nombre,
+            c.direccion or "",
+            c.ciudad or "",
+            c.provincia or "",
+            c.codigo_postal or "",
+            c.codigo_centro or "",
+            _bool_to_excel(c.activo),
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _CENTRO_CABECERAS)
+    return _serializar(wb)
+
+
+def _buscar_centro(db: Session, empresa_id: int, codigo: str, nombre: str) -> CentroTrabajo | None:
+    if codigo:
+        c = (
+            db.query(CentroTrabajo)
+            .filter(CentroTrabajo.empresa_id == empresa_id, CentroTrabajo.codigo_centro == codigo)
+            .one_or_none()
+        )
+        if c is not None:
+            return c
+    return (
+        db.query(CentroTrabajo)
+        .filter(CentroTrabajo.empresa_id == empresa_id, CentroTrabajo.nombre == nombre)
+        .first()
+    )
+
+
+def importar_centros(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(file_bytes, ["empresa_cif", "nombre"])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    claves_en_fichero: set[tuple[str, str]] = set()
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            empresa_cif = _norm_upper(fila.get("empresa_cif"))
+            if not empresa_cif:
+                raise ValueError("empresa_cif es obligatorio.")
+            empresa = db.query(Empresa).filter(Empresa.cif == empresa_cif).one_or_none()
+            if empresa is None:
+                raise ValueError(f"No existe la empresa con CIF {empresa_cif}.")
+            nombre = _norm_str(fila.get("nombre"))
+            if not nombre:
+                raise ValueError("El nombre es obligatorio.")
+            codigo = _norm_str(fila.get("codigo_centro"))
+            clave = (empresa_cif, codigo or nombre.lower())
+            if clave in claves_en_fichero:
+                raise ValueError(f"Centro duplicado en el fichero: {empresa_cif} / {codigo or nombre}")
+            claves_en_fichero.add(clave)
+            existente = _buscar_centro(db, empresa.id, codigo, nombre)
+            try:
+                activo = _to_bool(
+                    fila.get("activo"),
+                    default=True if existente is None else existente.activo,
+                )
+            except ValueError as exc:
+                raise ValueError(f"Columna 'activo': {exc}")
+            if existente is None:
+                db.add(CentroTrabajo(
+                    empresa_id=empresa.id,
+                    nombre=nombre,
+                    direccion=_norm_str(fila.get("direccion")) or None,
+                    ciudad=_norm_str(fila.get("ciudad")) or None,
+                    provincia=_norm_str(fila.get("provincia")) or None,
+                    codigo_postal=_norm_str(fila.get("codigo_postal")) or None,
+                    codigo_centro=codigo or None,
+                    activo=bool(activo),
+                ))
+                result.creados += 1
+            else:
+                existente.empresa_id = empresa.id
+                existente.nombre = nombre
+                existente.direccion = _norm_str(fila.get("direccion")) or None
+                existente.ciudad = _norm_str(fila.get("ciudad")) or None
+                existente.provincia = _norm_str(fila.get("provincia")) or None
+                existente.codigo_postal = _norm_str(fila.get("codigo_postal")) or None
+                existente.codigo_centro = codigo or None
+                existente.activo = bool(activo)
+                result.actualizados += 1
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+# --- Empleados ----------------------------------------------------------
+
+_EMPLEADO_CABECERAS = [
+    "id", "empresa_cif", "centro_codigo_o_nombre", "nombre", "apellidos", "nif",
+    "numero_afiliacion_ss", "categoria_profesional", "tipo_contrato",
+    "horas_semanales", "fecha_alta", "fecha_baja", "activo", "email", "telefono",
+    "inicio_jornada", "inicio_pausa", "fin_pausa", "fin_jornada",
+    "dias_laborables_habituales",
+]
+
+
+def _centro_referencia(c: CentroTrabajo | None) -> str:
+    if c is None:
+        return ""
+    return c.codigo_centro or c.nombre
+
+
+def exportar_empleados(db: Session) -> bytes:
+    empleados = (
+        db.query(Empleado).order_by(Empleado.apellidos, Empleado.nombre).all()
+    )
+    wb, ws = _crear_libro("Empleados", _EMPLEADO_CABECERAS)
+    datos = []
+    for e in empleados:
+        fila = [
+            e.id,
+            e.empresa.cif if e.empresa else "",
+            _centro_referencia(e.centro_trabajo),
+            e.nombre,
+            e.apellidos,
+            e.nif,
+            e.numero_afiliacion_ss or "",
+            e.categoria_profesional or "",
+            e.tipo_contrato or "",
+            float(e.horas_semanales) if e.horas_semanales is not None else None,
+            e.fecha_alta.isoformat() if e.fecha_alta else "",
+            e.fecha_baja.isoformat() if e.fecha_baja else "",
+            _bool_to_excel(e.activo),
+            e.email or "",
+            e.telefono or "",
+            e.inicio_jornada or "",
+            e.inicio_pausa or "",
+            e.fin_pausa or "",
+            e.fin_jornada or "",
+            _dias_to_str(e.dias_laborables_habituales),
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _EMPLEADO_CABECERAS)
+    return _serializar(wb)
+
+
+def _resolver_centro(db: Session, empresa_id: int, referencia: str) -> CentroTrabajo:
+    """Resuelve un centro por código (preferente) o nombre dentro de una empresa.
+
+    Lanza ValueError si no se encuentra o si el nombre es ambiguo.
+    """
+    if not referencia:
+        raise ValueError("centro_codigo_o_nombre es obligatorio.")
+    por_codigo = (
+        db.query(CentroTrabajo)
+        .filter(CentroTrabajo.empresa_id == empresa_id, CentroTrabajo.codigo_centro == referencia)
+        .all()
+    )
+    if len(por_codigo) == 1:
+        return por_codigo[0]
+    if len(por_codigo) > 1:
+        raise ValueError(f"Hay varios centros con código {referencia} en la empresa.")
+    por_nombre = (
+        db.query(CentroTrabajo)
+        .filter(CentroTrabajo.empresa_id == empresa_id, CentroTrabajo.nombre == referencia)
+        .all()
+    )
+    if len(por_nombre) == 1:
+        return por_nombre[0]
+    if len(por_nombre) > 1:
+        raise ValueError(f"Hay varios centros con nombre {referencia!r} en la empresa.")
+    raise ValueError(f"No se encontró el centro {referencia!r} en la empresa.")
+
+
+def importar_empleados(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(
+        file_bytes,
+        ["empresa_cif", "centro_codigo_o_nombre", "nombre", "apellidos", "nif"],
+    )
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    nifs_en_fichero: set[str] = set()
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            nif = _norm_upper(fila.get("nif"))
+            if not nif:
+                raise ValueError("El NIF es obligatorio.")
+            if nif in nifs_en_fichero:
+                raise ValueError(f"NIF duplicado en el fichero: {nif}")
+            nifs_en_fichero.add(nif)
+            empresa_cif = _norm_upper(fila.get("empresa_cif"))
+            empresa = db.query(Empresa).filter(Empresa.cif == empresa_cif).one_or_none()
+            if empresa is None:
+                raise ValueError(f"No existe la empresa con CIF {empresa_cif}.")
+            referencia = _norm_str(fila.get("centro_codigo_o_nombre"))
+            centro = _resolver_centro(db, empresa.id, referencia)
+            nombre = _norm_str(fila.get("nombre"))
+            apellidos = _norm_str(fila.get("apellidos"))
+            if not nombre or not apellidos:
+                raise ValueError("nombre y apellidos son obligatorios.")
+            horas = _to_numero(fila.get("horas_semanales"))
+            fecha_alta = _to_date(fila.get("fecha_alta"))
+            fecha_baja = _to_date(fila.get("fecha_baja"))
+            inicio_jornada = _to_horario(fila.get("inicio_jornada"))
+            inicio_pausa = _to_horario(fila.get("inicio_pausa"))
+            fin_pausa = _to_horario(fila.get("fin_pausa"))
+            fin_jornada = _to_horario(fila.get("fin_jornada"))
+            dias = _str_to_dias(fila.get("dias_laborables_habituales"))
+            existente = db.query(Empleado).filter(Empleado.nif == nif).one_or_none()
+            activo = _to_bool(
+                fila.get("activo"),
+                default=True if existente is None else existente.activo,
+            )
+            if existente is None:
+                db.add(Empleado(
+                    empresa_id=empresa.id,
+                    centro_trabajo_id=centro.id,
+                    nombre=nombre,
+                    apellidos=apellidos,
+                    nif=nif,
+                    numero_afiliacion_ss=_norm_str(fila.get("numero_afiliacion_ss")) or None,
+                    categoria_profesional=_norm_str(fila.get("categoria_profesional")) or None,
+                    tipo_contrato=_norm_str(fila.get("tipo_contrato")) or None,
+                    horas_semanales=horas if horas is not None else 40.0,
+                    fecha_alta=fecha_alta,
+                    fecha_baja=fecha_baja,
+                    activo=bool(activo),
+                    email=(_norm_lower(fila.get("email")) or None),
+                    telefono=_norm_str(fila.get("telefono")) or None,
+                    inicio_jornada=inicio_jornada,
+                    inicio_pausa=inicio_pausa,
+                    fin_pausa=fin_pausa,
+                    fin_jornada=fin_jornada,
+                    dias_laborables_habituales=dias,
+                ))
+                result.creados += 1
+            else:
+                existente.empresa_id = empresa.id
+                existente.centro_trabajo_id = centro.id
+                existente.nombre = nombre
+                existente.apellidos = apellidos
+                existente.nif = nif
+                existente.numero_afiliacion_ss = _norm_str(fila.get("numero_afiliacion_ss")) or None
+                existente.categoria_profesional = _norm_str(fila.get("categoria_profesional")) or None
+                existente.tipo_contrato = _norm_str(fila.get("tipo_contrato")) or None
+                if horas is not None:
+                    existente.horas_semanales = horas
+                existente.fecha_alta = fecha_alta
+                existente.fecha_baja = fecha_baja
+                existente.activo = bool(activo)
+                existente.email = (_norm_lower(fila.get("email")) or None)
+                existente.telefono = _norm_str(fila.get("telefono")) or None
+                existente.inicio_jornada = inicio_jornada
+                existente.inicio_pausa = inicio_pausa
+                existente.fin_pausa = fin_pausa
+                existente.fin_jornada = fin_jornada
+                existente.dias_laborables_habituales = dias
+                result.actualizados += 1
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+# --- Usuarios -----------------------------------------------------------
+
+_USUARIO_CABECERAS = ["id", "dni", "empleado_nif", "es_admin", "activo"]
+
+
+def exportar_usuarios(db: Session) -> bytes:
+    usuarios = (
+        db.query(Usuario)
+        .order_by(Usuario.es_admin.desc(), Usuario.dni).all()
+    )
+    wb, ws = _crear_libro("Usuarios", _USUARIO_CABECERAS)
+    datos = []
+    for u in usuarios:
+        fila = [
+            u.id,
+            u.dni,
+            u.empleado.nif if u.empleado else "",
+            _bool_to_excel(u.es_admin),
+            _bool_to_excel(u.activo),
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _USUARIO_CABECERAS)
+    return _serializar(wb)
+
+
+def importar_usuarios(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(file_bytes, ["dni"])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    dnis_en_fichero: set[str] = set()
+    empleado_nifs_usados: set[str] = set()
+
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            dni = _norm_upper(fila.get("dni"))
+            if not dni:
+                raise ValueError("El DNI es obligatorio.")
+            if dni in dnis_en_fichero:
+                raise ValueError(f"DNI duplicado en el fichero: {dni}")
+            dnis_en_fichero.add(dni)
+            empleado_nif = _norm_upper(fila.get("empleado_nif"))
+            empleado: Empleado | None = None
+            if empleado_nif:
+                empleado = db.query(Empleado).filter(Empleado.nif == empleado_nif).one_or_none()
+                if empleado is None:
+                    raise ValueError(f"No existe el empleado con NIF {empleado_nif}.")
+                if empleado_nif in empleado_nifs_usados:
+                    raise ValueError(
+                        f"El NIF {empleado_nif} aparece en más de una fila de usuarios."
+                    )
+                empleado_nifs_usados.add(empleado_nif)
+            existente = db.query(Usuario).filter(Usuario.dni == dni).one_or_none()
+            es_admin = _to_bool(
+                fila.get("es_admin"),
+                default=False if existente is None else existente.es_admin,
+            )
+            activo = _to_bool(
+                fila.get("activo"),
+                default=True if existente is None else existente.activo,
+            )
+            # Si el empleado ya tiene OTRO usuario distinto al actual, no se puede asignar.
+            if empleado is not None and empleado.usuario is not None:
+                if existente is None or empleado.usuario.id != existente.id:
+                    raise ValueError(
+                        f"El empleado {empleado_nif} ya tiene otro usuario asignado."
+                    )
+            if existente is None:
+                db.add(Usuario(
+                    dni=dni,
+                    empleado_id=empleado.id if empleado else None,
+                    es_admin=bool(es_admin),
+                    activo=bool(activo),
+                ))
+                result.creados += 1
+            else:
+                existente.dni = dni
+                existente.empleado_id = empleado.id if empleado else None
+                existente.es_admin = bool(es_admin)
+                existente.activo = bool(activo)
+                result.actualizados += 1
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
+
+    # Validación final: tras aplicar todos los cambios, debe seguir habiendo
+    # al menos un admin activo en la BD (sin commit todavía).
+    db.flush()
+    admins_activos = (
+        db.query(Usuario)
+        .filter(Usuario.es_admin == True, Usuario.activo == True)  # noqa: E712
+        .count()
+    )
+    if admins_activos == 0:
+        db.rollback()
+        result.errores.append((
+            0,
+            "El import dejaría el sistema sin ningún administrador activo. Abortado.",
+        ))
+        return result
+
+    db.commit()
+    result.commit_ok = True
+    return result

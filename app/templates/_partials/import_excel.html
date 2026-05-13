@@ -1,0 +1,88 @@
+{#
+  Partial reutilizable para import/export de Excel.
+  Esperado en el contexto:
+    kicker       — texto del kicker (p.ej. "Maestros / Empresas")
+    titulo       — título de la página
+    volver_url   — URL al listado para el botón "Volver"
+    exportar_url — URL del export para reofrecerlo como plantilla
+    post_url     — URL donde se hace el POST con el archivo
+    columnas     — lista de strings con las columnas esperadas
+    resultado    — None o ImportResult
+#}
+<header class="page__head">
+    <div>
+        <div class="kicker">{{ kicker }}</div>
+        <h1 class="h1">{{ titulo }}</h1>
+        <div class="sub">Sube un fichero .xlsx con la misma estructura que el de exportación.</div>
+    </div>
+    <div class="actions">
+        <a href="{{ volver_url }}" class="btn">VOLVER</a>
+        <a href="{{ exportar_url }}" class="btn">↓ DESCARGAR PLANTILLA / EXPORT ACTUAL</a>
+    </div>
+</header>
+
+{% if resultado is none %}
+<div class="panel">
+    <form method="post" action="{{ post_url }}" enctype="multipart/form-data">
+        <p>Selecciona el fichero <code>.xlsx</code> a importar. Las filas con clave existente
+        (CIF, NIF o DNI según la tabla) se <strong>actualizan</strong>; las nuevas se
+        <strong>crean</strong>. Si alguna fila es inválida, no se aplica ningún cambio.</p>
+
+        <p><label>
+            Archivo
+            <input type="file" name="archivo" accept=".xlsx" required>
+        </label></p>
+
+        <p>
+            <button type="submit" class="btn btn--primary">SUBIR E IMPORTAR</button>
+        </p>
+    </form>
+
+    <details>
+        <summary>Columnas esperadas</summary>
+        <ul>
+            {% for c in columnas %}<li><code>{{ c }}</code></li>{% endfor %}
+        </ul>
+    </details>
+</div>
+{% else %}
+<div class="panel">
+    {% if resultado.commit_ok %}
+        <div class="alert" style="background:#dff5e1;color:#1b4d2b;">
+            <strong>Importación correcta.</strong>
+            Creados: {{ resultado.creados }} ·
+            Actualizados: {{ resultado.actualizados }}.
+        </div>
+    {% else %}
+        <div class="alert" style="background:#fde2e2;color:#7a1414;">
+            <strong>Importación rechazada.</strong>
+            No se ha aplicado ningún cambio. Corrige los errores y vuelve a subir el fichero.
+        </div>
+    {% endif %}
+
+    {% if resultado.errores %}
+    <h3>Errores ({{ resultado.errores|length }})</h3>
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th style="width:80px;">FILA</th>
+                <th>DETALLE</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fila, msg in resultado.errores %}
+            <tr>
+                <td>{{ fila if fila > 0 else "—" }}</td>
+                <td>{{ msg }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <p style="margin-top:1em;">
+        <a href="{{ post_url }}" class="btn">VOLVER A INTENTAR</a>
+        <a href="{{ volver_url }}" class="btn btn--primary">IR AL LISTADO</a>
+    </p>
+</div>
+{% endif %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Importar empleados{% endblock %}
+{% block content %}
+{% set kicker = "Maestros / Empleados" %}
+{% set titulo = "Importar empleados desde Excel" %}
+{% set volver_url = "/empleados" %}
+{% set exportar_url = "/empleados/exportar" %}
+{% set post_url = "/empleados/importar" %}
+{% set columnas = [
+    "id", "empresa_cif", "centro_codigo_o_nombre", "nombre", "apellidos", "nif",
+    "numero_afiliacion_ss", "categoria_profesional", "tipo_contrato",
+    "horas_semanales", "fecha_alta (YYYY-MM-DD)", "fecha_baja (YYYY-MM-DD)",
+    "activo", "email", "telefono",
+    "inicio_jornada (HH:MM)", "inicio_pausa (HH:MM)",
+    "fin_pausa (HH:MM)", "fin_jornada (HH:MM)",
+    "dias_laborables_habituales (L,M,X,J,V,S,D)"
+] %}
+{% include "_partials/import_excel.html" %}
+{% endblock %}

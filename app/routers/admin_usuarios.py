@@ -11,13 +11,16 @@ Reglas:
       si es el último admin activo.
 """
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from datetime import date
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import Empleado, Usuario
+from app.services import excel_service
 from app.templating import render
 
 
@@ -26,6 +29,8 @@ router = APIRouter(
     tags=["admin-usuarios"],
     dependencies=[Depends(require_admin)],
 )
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _empleados_disponibles(db: Session, usuario_actual_id: int | None = None):
@@ -287,3 +292,41 @@ def delete_usuario(
     db.delete(usuario)
     db.commit()
     return RedirectResponse("/admin/usuarios", status_code=303)
+
+
+@router.get("/exportar", name="admin_usuarios_exportar")
+def exportar_usuarios(db: Session = Depends(get_db)):
+    contenido = excel_service.exportar_usuarios(db)
+    fname = f"usuarios_{date.today().isoformat()}.xlsx"
+    return Response(
+        content=contenido,
+        media_type=_XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/importar", response_class=HTMLResponse, name="admin_usuarios_importar_form")
+def importar_usuarios_form(
+    request: Request,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(require_admin),
+):
+    return render(
+        request, db, "admin/usuarios/import.html",
+        current_user=current, resultado=None,
+    )
+
+
+@router.post("/importar", response_class=HTMLResponse, name="admin_usuarios_importar")
+async def importar_usuarios(
+    request: Request,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(require_admin),
+    archivo: UploadFile = File(...),
+):
+    contenido = await archivo.read()
+    resultado = excel_service.importar_usuarios(db, contenido)
+    return render(
+        request, db, "admin/usuarios/import.html",
+        current_user=current, resultado=resultado,
+    )

@@ -2,13 +2,14 @@
 
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import CentroTrabajo, Empleado, Empresa
+from app.services import excel_service
 from app.templating import render
 
 
@@ -17,6 +18,8 @@ router = APIRouter(
     tags=["empleados"],
     dependencies=[Depends(require_admin)],
 )
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _parse_fecha(valor: str) -> date | None:
@@ -197,3 +200,30 @@ def delete_empleado(empleado_id: int, db: Session = Depends(get_db)):
     db.delete(empleado)
     db.commit()
     return RedirectResponse("/empleados", status_code=303)
+
+
+@router.get("/exportar", name="empleados_exportar")
+def exportar_empleados(db: Session = Depends(get_db)):
+    contenido = excel_service.exportar_empleados(db)
+    fname = f"empleados_{date.today().isoformat()}.xlsx"
+    return Response(
+        content=contenido,
+        media_type=_XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/importar", response_class=HTMLResponse, name="empleados_importar_form")
+def importar_empleados_form(request: Request, db: Session = Depends(get_db)):
+    return render(request, db, "empleados/import.html", resultado=None)
+
+
+@router.post("/importar", response_class=HTMLResponse, name="empleados_importar")
+async def importar_empleados(
+    request: Request,
+    db: Session = Depends(get_db),
+    archivo: UploadFile = File(...),
+):
+    contenido = await archivo.read()
+    resultado = excel_service.importar_empleados(db, contenido)
+    return render(request, db, "empleados/import.html", resultado=resultado)

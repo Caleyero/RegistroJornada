@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Importar usuarios{% endblock %}
+{% block content %}
+{% set kicker = "Administración / Usuarios" %}
+{% set titulo = "Importar usuarios desde Excel" %}
+{% set volver_url = "/admin/usuarios" %}
+{% set exportar_url = "/admin/usuarios/exportar" %}
+{% set post_url = "/admin/usuarios/importar" %}
+{% set columnas = ["id", "dni", "empleado_nif", "es_admin", "activo"] %}
+{% include "_partials/import_excel.html" %}
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Importar centros{% endblock %}
+{% block content %}
+{% set kicker = "Maestros / Centros" %}
+{% set titulo = "Importar centros desde Excel" %}
+{% set volver_url = "/centros" %}
+{% set exportar_url = "/centros/exportar" %}
+{% set post_url = "/centros/importar" %}
+{% set columnas = [
+    "id", "empresa_cif", "nombre", "direccion", "ciudad", "provincia",
+    "codigo_postal", "codigo_centro", "activo"
+] %}
+{% include "_partials/import_excel.html" %}
+{% endblock %}
