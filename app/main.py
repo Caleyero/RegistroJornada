@@ -62,6 +62,19 @@ with engine.begin() as conn:
         if col not in cols_emp:
             conn.exec_driver_sql(f"ALTER TABLE empleados ADD COLUMN {col} {ddl}")
 
+    # Limpieza one-shot: el flujo diario ya no auto-confirma nada. Si existen
+    # filas con fuente='auto' (residuos de versiones intermedias), se borran.
+    # Las filas con fuente='manual' o 'wizard' representan acto del usuario y
+    # se mantienen.
+    if "registros_diarios" in {
+        r[0] for r in conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }:
+        conn.exec_driver_sql(
+            "DELETE FROM registros_diarios WHERE fuente = 'auto'"
+        )
+
 
 def _bootstrap_admin() -> None:
     """Crea o promueve al administrador definido en ADMIN_DNI.

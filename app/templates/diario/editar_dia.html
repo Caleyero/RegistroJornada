@@ -70,6 +70,13 @@
     <strong>{{ horario_tipo.inicio_jornada }}–{{ horario_tipo.inicio_pausa }}</strong>
     · pausa ·
     <strong>{{ horario_tipo.fin_pausa }}–{{ horario_tipo.fin_jornada }}</strong>
+    {% if not registro %}
+      {% if es_festivo_cal %}
+        <br><strong>Pista:</strong> el calendario asturiano marca este día como <em>{{ festivo_desc }}</em>. Si no trabajaste, deja el tipo como "Festivo" y guarda. Si trabajaste excepcionalmente, cámbialo a "Trabajado" e introduce las horas.
+      {% elif not dow_laborable %}
+        <br><strong>Pista:</strong> según tu perfil este día es de descanso semanal. Si no trabajaste, deja "Descanso" y guarda. Si trabajaste, cámbialo a "Trabajado".
+      {% endif %}
+    {% endif %}
   </div>
 
   <form method="post" action="/diario/{{ anio }}/{{ '%02d' % mes }}/{{ dia }}">
@@ -78,7 +85,15 @@
     <div class="edit-row" style="margin-bottom: 12px;">
       <label for="tipo">Tipo de día</label>
       <select id="tipo" name="tipo" {% if registro and registro.cerrado %}disabled{% endif %}>
-        {% set actual = registro.tipo if registro else 'trabajado' %}
+        {% if registro %}
+          {% set actual = registro.tipo %}
+        {% elif es_festivo_cal %}
+          {% set actual = 'festivo' %}
+        {% elif not dow_laborable %}
+          {% set actual = 'descanso' %}
+        {% else %}
+          {% set actual = 'trabajado' %}
+        {% endif %}
         <option value="trabajado" {% if actual == 'trabajado' %}selected{% endif %}>Trabajado</option>
         <option value="festivo" {% if actual == 'festivo' %}selected{% endif %}>Festivo</option>
         <option value="vacaciones" {% if actual == 'vacaciones' %}selected{% endif %}>Vacaciones</option>
@@ -118,7 +133,7 @@
       <label for="observaciones">Observaciones</label>
       <textarea id="observaciones" name="observaciones"
                 placeholder="Motivo de la ausencia, descripción del festivo, nota..."
-                {% if registro and registro.cerrado %}disabled{% endif %}>{{ registro.observaciones if registro and registro.observaciones else '' }}</textarea>
+                {% if registro and registro.cerrado %}disabled{% endif %}>{% if registro and registro.observaciones %}{{ registro.observaciones }}{% elif not registro and es_festivo_cal %}{{ festivo_desc }}{% endif %}</textarea>
     </div>
 
     <div class="edit-actions">

@@ -139,7 +139,7 @@ def calendario(
     _validar_mes(anio, mes)
     empleado = _resolver_empleado(db, current, empleado_id)
 
-    dias = diario_service.asegurar_mes(db, empleado, anio, mes)
+    dias = diario_service.cargar_mes(db, empleado, anio, mes)
     cerrado = diario_service.mes_esta_cerrado(dias)
     horario_tipo = diario_service.horario_tipo_de_empleado(empleado)
     dias_laborables_habit = set(diario_service.dias_laborables_de_empleado(empleado))
@@ -164,13 +164,37 @@ def calendario(
                 continue
             dia = dias_por_fecha.get(fecha)
             es_festivo_calendario = fecha.isoformat() in FESTIVOS_ASTURIAS
+            fuera_periodo = diario_service.dia_fuera_de_periodo(empleado, fecha)
+            es_dow_laborable = fecha.weekday() in dias_laborables_habit
+            # Estado visual del día (5 estados mutuamente excluyentes):
+            #  - fuera_periodo: anterior a alta / posterior a baja
+            #  - confirmado: hay fila en BD (acto del usuario)
+            #  - inferido_festivo: festivo del calendario sin fila
+            #  - inferido_descanso: DOW no laborable sin fila
+            #  - por_confirmar: día laborable sin fila, hoy o pasado
+            #  - pendiente: día laborable sin fila, futuro
+            if fuera_periodo:
+                estado = "fuera_periodo"
+            elif dia is not None:
+                estado = "confirmado"
+            elif es_festivo_calendario:
+                estado = "inferido_festivo"
+            elif not es_dow_laborable:
+                estado = "inferido_descanso"
+            elif fecha <= hoy:
+                estado = "por_confirmar"
+            else:
+                estado = "pendiente"
             fila.append({
                 "fecha": fecha, "en_mes": True, "dia": dia,
-                "pendiente": dia is None,
+                "estado": estado,
                 "pendiente_pasado": fecha in set_pendientes_pasados,
                 "es_hoy": fecha == hoy,
                 "es_festivo_calendario": es_festivo_calendario,
-                "dow_laborable": fecha.weekday() in dias_laborables_habit,
+                "festivo_desc": FESTIVOS_ASTURIAS.get(fecha.isoformat(), ""),
+                "dow_laborable": es_dow_laborable,
+                "fuera_periodo": fuera_periodo,
+                "clickable": not fuera_periodo,
             })
         semanas.append(fila)
 
@@ -194,6 +218,20 @@ def calendario(
     horas_str = f"{minutos_trabajados // 60}h {minutos_trabajados % 60:02d}m"
 
     prev, sig = _mes_navegacion(anio, mes)
+    # Deshabilitar navegación cuando el mes destino caería entero fuera del
+    # periodo de alta/baja del empleado.
+    import calendar as _cal2
+    def _mes_entero_fuera(a: int, m: int) -> bool:
+        ini = date(a, m, 1)
+        fin = date(a, m, _cal2.monthrange(a, m)[1])
+        if empleado.fecha_alta and fin < empleado.fecha_alta:
+            return True
+        if empleado.fecha_baja and ini > empleado.fecha_baja:
+            return True
+        return False
+    prev_disabled = _mes_entero_fuera(prev[0], prev[1])
+    sig_disabled = _mes_entero_fuera(sig[0], sig[1])
+
     suffix = f"?empleado_id={empleado.id}" if current.es_admin else ""
     return render(
         request, db, "diario/calendario.html",
@@ -204,6 +242,7 @@ def calendario(
         horario_tipo=horario_tipo,
         prev_anio=prev[0], prev_mes=prev[1],
         sig_anio=sig[0], sig_mes=sig[1],
+        prev_disabled=prev_disabled, sig_disabled=sig_disabled,
         suffix=suffix,
         horas_str=horas_str,
         dias_trabajados=dias_trabajados,
@@ -231,8 +270,14 @@ def editar_dia(
     except ValueError:
         raise HTTPException(status_code=400, detail="Fecha inválida.")
 
-    # Garantiza la fila (si es un día pasado sin auto-rellenar todavía).
-    diario_service.asegurar_mes(db, empleado, anio, mes)
+    if diario_service.dia_fuera_de_periodo(empleado, fecha):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La fecha {fecha.isoformat()} está fuera del periodo del "
+                f"empleado (alta {empleado.fecha_alta}, baja {empleado.fecha_baja})."
+            ),
+        )
 
     from app.models import RegistroDiario
     registro = (
@@ -244,6 +289,11 @@ def editar_dia(
         .first()
     )
     horario_tipo = diario_service.horario_tipo_de_empleado(empleado)
+    es_festivo_cal = fecha.isoformat() in FESTIVOS_ASTURIAS
+    festivo_desc = FESTIVOS_ASTURIAS.get(fecha.isoformat(), "")
+    dow_laborable = fecha.weekday() in set(
+        diario_service.dias_laborables_de_empleado(empleado)
+    )
     suffix = f"?empleado_id={empleado.id}" if current.es_admin else ""
 
     return render(
@@ -251,6 +301,8 @@ def editar_dia(
         current_user=current,
         empleado=empleado, fecha=fecha, anio=anio, mes=mes, dia=dia,
         registro=registro, horario_tipo=horario_tipo, suffix=suffix,
+        es_festivo_cal=es_festivo_cal, festivo_desc=festivo_desc,
+        dow_laborable=dow_laborable,
     )
 
 
@@ -270,12 +322,7 @@ def cerrar_y_generar(
     _validar_mes(anio, mes)
     empleado = _resolver_empleado(db, current, empleado_id)
 
-    dias = diario_service.asegurar_mes(db, empleado, anio, mes)
-    if not dias:
-        raise HTTPException(
-            status_code=400,
-            detail="No hay días registrados para este mes; no se puede generar el PDF.",
-        )
+    dias = diario_service.cargar_mes(db, empleado, anio, mes)
 
     pendientes = diario_service.pendientes_laborables_pasados(
         empleado, anio, mes, dias,

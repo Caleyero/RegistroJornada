@@ -97,73 +97,17 @@ def _hoy() -> date:
     return date.today()
 
 
-def asegurar_mes(
+def cargar_mes(
     db: Session, empleado: Empleado, anio: int, mes: int,
 ) -> list[RegistroDiario]:
-    """Auto-rellena los días objetivos (festivo / descanso semanal) del mes.
+    """Devuelve los `RegistroDiario` existentes del mes, ordenados por fecha.
 
-    Cumple con el art. 34.9 ET: **NO** crea filas de tipo `trabajado` por su
-    cuenta — el empleado debe confirmarlas expresamente. Sí crea
-    automáticamente:
-
-    - **Festivos** del calendario asturiano: son hechos públicos, no requieren
-      acto del trabajador.
-    - **Descansos semanales** (DOW no laborable según el perfil del empleado):
-      son ausencia de obligación, no una jornada que firmar.
-
-    Se ejecuta sobre **todo el mes** (no se limita a "hasta hoy"): si miramos
-    mayo en abril, ya queremos ver el 1 de mayo marcado como festivo.
-
-    Los días laborables que aún no están confirmados se dejan sin fila para
-    que la UI los muestre como "Pendiente" / "Por confirmar".
-
-    Es idempotente: la unique constraint `(empleado_id, fecha)` cubre las
-    re-ejecuciones.
+    Ya **no** crea filas automáticamente — ni festivos, ni descansos, ni nada.
+    El art. 34.9 ET pide registro fidedigno y solo el empleado puede dar
+    fe del día. Festivos y descansos se infieren en la UI y en el PDF a
+    partir del calendario asturiano y del perfil del empleado, pero sin
+    persistir filas.
     """
-    dias_laborables = set(dias_laborables_de_empleado(empleado))
-
-    existentes = {
-        r.fecha: r for r in (
-            db.query(RegistroDiario)
-            .filter(
-                RegistroDiario.empleado_id == empleado.id,
-                RegistroDiario.fecha >= date(anio, mes, 1),
-                RegistroDiario.fecha <= date(anio, mes, _ultimo_dia_mes(anio, mes)),
-            )
-            .all()
-        )
-    }
-
-    nuevos: list[RegistroDiario] = []
-
-    for dia in range(1, _ultimo_dia_mes(anio, mes) + 1):
-        fecha = date(anio, mes, dia)
-        if fecha in existentes:
-            continue
-
-        iso = fecha.isoformat()
-        descripcion_festivo = FESTIVOS_ASTURIAS.get(iso)
-        if descripcion_festivo:
-            nuevos.append(RegistroDiario(
-                empleado_id=empleado.id, fecha=fecha,
-                tipo=TIPO_FESTIVO, fuente=FUENTE_AUTO,
-                observaciones=descripcion_festivo,
-            ))
-            continue
-
-        if fecha.weekday() not in dias_laborables:
-            nuevos.append(RegistroDiario(
-                empleado_id=empleado.id, fecha=fecha,
-                tipo=TIPO_DESCANSO, fuente=FUENTE_AUTO,
-            ))
-            continue
-
-        # Día laborable: no se crea fila — el empleado lo confirmará a mano.
-
-    if nuevos:
-        db.add_all(nuevos)
-        db.commit()
-
     return (
         db.query(RegistroDiario)
         .filter(
@@ -176,15 +120,31 @@ def asegurar_mes(
     )
 
 
+# Alias retrocompatible para no romper imports antiguos durante el cambio.
+asegurar_mes = cargar_mes
+
+
+def dia_fuera_de_periodo(empleado: Empleado, fecha: date) -> bool:
+    """True si la fecha es anterior al alta o posterior a la baja del empleado."""
+    if empleado.fecha_alta and fecha < empleado.fecha_alta:
+        return True
+    if empleado.fecha_baja and fecha > empleado.fecha_baja:
+        return True
+    return False
+
+
 def pendientes_laborables_pasados(
     empleado: Empleado, anio: int, mes: int, dias: list[RegistroDiario],
     hoy: date | None = None,
 ) -> list[date]:
     """Devuelve fechas laborables (según perfil) <= hoy del mes sin fila.
 
-    Sólo cuenta días en `dias_laborables_habituales` del empleado y excluye
-    festivos del calendario asturiano (que sí se auto-marcan). Es la lista
-    que el empleado tiene pendiente de confirmar.
+    Reglas:
+    - Sólo cuenta días en `dias_laborables_habituales` del empleado.
+    - Excluye festivos del calendario asturiano (no requieren confirmación
+      expresa; el PDF los recoge automáticamente al cerrar).
+    - Excluye fechas anteriores a `fecha_alta` o posteriores a `fecha_baja`
+      del empleado.
     """
     if hoy is None:
         hoy = _hoy()
@@ -195,6 +155,8 @@ def pendientes_laborables_pasados(
     pendientes: list[date] = []
     for dia in range(1, fin.day + 1):
         fecha = date(anio, mes, dia)
+        if dia_fuera_de_periodo(empleado, fecha):
+            continue
         if fecha in fechas_con_fila:
             continue
         if fecha.weekday() not in dias_laborables:
@@ -228,6 +190,11 @@ def upsert_dia(
         raise ValueError(
             f"Tipo de día inválido: {payload.tipo!r}. "
             f"Valores válidos: {sorted(TIPOS_VALIDOS)}."
+        )
+    if dia_fuera_de_periodo(empleado, fecha):
+        raise ValueError(
+            f"La fecha {fecha.isoformat()} está fuera del periodo de alta "
+            f"del empleado (alta: {empleado.fecha_alta}, baja: {empleado.fecha_baja})."
         )
 
     horarios = (
@@ -301,19 +268,29 @@ def dias_a_payload_pdf(
 ) -> dict[str, Any]:
     """Convierte la lista de días en el dict que consume `RegistroPayload`.
 
-    Devuelve un diccionario con todos los campos que `_upsert_registro` y
-    `pdf_service.generar_pdf_registro_mensual` necesitan: horario tipo del
-    empleado, días laborables, eventos (festivos / vacaciones / ausencias) y
-    overrides por día.
+    Como ahora la BD sólo guarda lo que el usuario confirmó expresamente,
+    los festivos y los días fuera de periodo de alta/baja se **infieren** y
+    se añaden al payload en este punto:
+
+    - `festivos` = festivos del calendario asturiano del mes que NO han sido
+      sobrescritos por el empleado con otro tipo (trabajado, vacaciones, etc.)
+      MÁS los días que el empleado haya marcado expresamente como festivo.
+    - `ausencias` = ausencias confirmadas + días fuera del periodo alta/baja
+      (etiquetados como "Antes de alta" / "Tras baja").
+
+    El PDF resultante refleja jornada confirmada, infiere lo objetivo y deja
+    claras las fechas fuera del periodo laboral del empleado.
     """
     horario = horario_tipo_de_empleado(empleado)
     dias_laborables = dias_laborables_de_empleado(empleado)
+    fechas_con_fila = {d.fecha for d in dias}
 
     festivos: dict[str, str] = {}
     vacaciones: list[str] = []
     ausencias: dict[str, str] = {}
     overrides: dict[str, dict[str, str]] = {}
 
+    # 1) Procesar filas confirmadas
     for d in dias:
         iso = d.fecha.isoformat()
         if d.tipo == TIPO_FESTIVO:
@@ -332,6 +309,28 @@ def dias_a_payload_pdf(
             if override != horario:
                 overrides[iso] = override
         # TIPO_DESCANSO: nada — coincide con dias_laborables del perfil.
+
+    # 2) Inferir festivos del calendario para las fechas SIN fila confirmada.
+    for dia in range(1, _ultimo_dia_mes(anio, mes) + 1):
+        fecha = date(anio, mes, dia)
+        if fecha in fechas_con_fila:
+            continue
+        if dia_fuera_de_periodo(empleado, fecha):
+            continue
+        iso = fecha.isoformat()
+        descripcion = FESTIVOS_ASTURIAS.get(iso)
+        if descripcion:
+            festivos[iso] = descripcion
+
+    # 3) Marcar días fuera de periodo (antes de alta / tras baja) como ausencia
+    #    para que el PDF los anote en observaciones en vez de pintar horario.
+    for dia in range(1, _ultimo_dia_mes(anio, mes) + 1):
+        fecha = date(anio, mes, dia)
+        iso = fecha.isoformat()
+        if empleado.fecha_alta and fecha < empleado.fecha_alta:
+            ausencias.setdefault(iso, f"Antes de alta ({empleado.fecha_alta.isoformat()})")
+        elif empleado.fecha_baja and fecha > empleado.fecha_baja:
+            ausencias.setdefault(iso, f"Tras baja ({empleado.fecha_baja.isoformat()})")
 
     return {
         "empleado_id": empleado.id,
@@ -432,6 +431,8 @@ def sincronizar_desde_wizard(
     for dia in range(1, _ultimo_dia_mes(anio, mes) + 1):
         fecha = date(anio, mes, dia)
         iso = fecha.isoformat()
+        if dia_fuera_de_periodo(empleado, fecha):
+            continue  # no se sincroniza nada fuera del periodo alta/baja
 
         if iso in festivos:
             tipo, obs = TIPO_FESTIVO, festivos[iso]

@@ -90,6 +90,27 @@
       45deg, #fff8e1, #fff8e1 6px,
       #f7e7a8 6px, #f7e7a8 12px);
   }
+  .badge--inferido {
+    border-style: dashed;
+    opacity: 0.75;
+  }
+  .cal-cell--inferido-festivo,
+  .cal-cell--inferido-descanso {
+    background: var(--surface-2);
+  }
+  .cal-cell--inferido-festivo:hover,
+  .cal-cell--inferido-descanso:hover { background: var(--surface-3); }
+  .badge-fuera {
+    background: transparent; color: var(--ink-4);
+    border: 1px dashed var(--ink-4);
+  }
+  .cal-cell--fuera-periodo {
+    background: repeating-linear-gradient(
+      135deg, #f5f5f4, #f5f5f4 4px,
+      #ececea 4px, #ececea 8px);
+    color: var(--ink-4); cursor: default;
+  }
+  .cal-cell--fuera-periodo .cal-cell__num { color: var(--ink-4); }
   .diario-aviso-pendientes {
     padding: 10px 14px; background: #fff8e1;
     border: 1px solid #5a4500;
@@ -151,9 +172,17 @@
 
 <div class="diario-toolbar">
   <div class="diario-nav">
-    <a class="btn btn--ghost btn--sm" href="/diario/{{ prev_anio }}/{{ '%02d' % prev_mes }}{{ suffix }}">← {{ meses[prev_mes] }}</a>
+    {% if prev_disabled %}
+      <span class="btn btn--ghost btn--sm" style="opacity:0.4;cursor:not-allowed" title="Antes del alta del empleado">← {{ meses[prev_mes] }}</span>
+    {% else %}
+      <a class="btn btn--ghost btn--sm" href="/diario/{{ prev_anio }}/{{ '%02d' % prev_mes }}{{ suffix }}">← {{ meses[prev_mes] }}</a>
+    {% endif %}
     <span class="label">{{ meses[mes]|upper }} {{ anio }}</span>
-    <a class="btn btn--ghost btn--sm" href="/diario/{{ sig_anio }}/{{ '%02d' % sig_mes }}{{ suffix }}">{{ meses[sig_mes] }} →</a>
+    {% if sig_disabled %}
+      <span class="btn btn--ghost btn--sm" style="opacity:0.4;cursor:not-allowed" title="Después de la baja del empleado">{{ meses[sig_mes] }} →</span>
+    {% else %}
+      <a class="btn btn--ghost btn--sm" href="/diario/{{ sig_anio }}/{{ '%02d' % sig_mes }}{{ suffix }}">{{ meses[sig_mes] }} →</a>
+    {% endif %}
   </div>
   {% if es_admin %}
   <div class="diario-nav">
@@ -203,19 +232,25 @@
         </div>
       {% else %}
         {% set d = cell.dia %}
-        {% set is_pendiente = cell.pendiente %}
-        {% set is_por_confirmar = cell.pendiente_pasado %}
-        {% set cell_class = "cal-cell" %}
-        {% if is_por_confirmar %}{% set cell_class = cell_class ~ " cal-cell--por-confirmar" %}
-        {% elif is_pendiente %}{% set cell_class = cell_class ~ " cal-cell--pendiente" %}{% endif %}
-        <a class="{{ cell_class }}"
-           href="/diario/{{ anio }}/{{ '%02d' % mes }}/{{ cell.fecha.day }}/editar{{ suffix }}">
+        {% set estado = cell.estado %}
+        {% set cell_class = "cal-cell cal-cell--" ~ (estado|replace('_','-')) %}
+        {% set href = "/diario/" ~ anio ~ "/" ~ ('%02d' % mes) ~ "/" ~ cell.fecha.day ~ "/editar" ~ suffix %}
+        {% set tag = "a" if cell.clickable else "div" %}
+        <{{ tag }} class="{{ cell_class }}" {% if cell.clickable %}href="{{ href }}"{% endif %}>
           <span class="cal-cell__num">{% if cell.es_hoy %}<span class="today">{{ cell.fecha.day }}</span>{% else %}{{ cell.fecha.day }}{% endif %}</span>
-          {% if is_por_confirmar %}
+          {% if estado == 'fuera_periodo' %}
+            <span class="cal-cell__badge badge-fuera">Fuera de periodo</span>
+          {% elif estado == 'por_confirmar' %}
             <span class="cal-cell__badge badge-por-confirmar">Por confirmar</span>
-          {% elif is_pendiente %}
+          {% elif estado == 'pendiente' %}
             <span class="cal-cell__badge badge-pendiente">Pendiente</span>
+          {% elif estado == 'inferido_festivo' %}
+            <span class="cal-cell__badge badge-festivo badge--inferido" title="Festivo del calendario asturiano (sin confirmar; pulsa para registrar acto)">Festivo*</span>
+            <span class="cal-cell__obs">{{ cell.festivo_desc }}</span>
+          {% elif estado == 'inferido_descanso' %}
+            <span class="cal-cell__badge badge-descanso badge--inferido" title="Descanso semanal según tu perfil (sin confirmar)">Descanso*</span>
           {% else %}
+            {# confirmado — hay fila en BD #}
             {% if d.cerrado %}<span class="cal-cell__lock">🔒</span>{% endif %}
             {% if d.tipo == 'trabajado' %}
               {% set override = (horario_tipo.inicio_jornada != d.inicio_jornada or horario_tipo.inicio_pausa != d.inicio_pausa or horario_tipo.fin_pausa != d.fin_pausa or horario_tipo.fin_jornada != d.fin_jornada) %}
@@ -224,32 +259,37 @@
                 {{ d.inicio_jornada }}–{{ d.fin_jornada }}
               </span>
             {% elif d.tipo == 'festivo' %}
-              <span class="cal-cell__badge badge-festivo">Festivo</span>
+              <span class="cal-cell__badge badge-festivo">Festivo ✓</span>
               <span class="cal-cell__obs">{{ d.observaciones or '' }}</span>
             {% elif d.tipo == 'vacaciones' %}
-              <span class="cal-cell__badge badge-vacaciones">Vacaciones</span>
+              <span class="cal-cell__badge badge-vacaciones">Vacaciones ✓</span>
               <span class="cal-cell__obs">{{ d.observaciones or '' }}</span>
             {% elif d.tipo == 'ausencia' %}
-              <span class="cal-cell__badge badge-ausencia">Ausencia</span>
+              <span class="cal-cell__badge badge-ausencia">Ausencia ✓</span>
               <span class="cal-cell__obs">{{ d.observaciones or '' }}</span>
             {% else %}
-              <span class="cal-cell__badge badge-descanso">Descanso</span>
+              <span class="cal-cell__badge badge-descanso">Descanso ✓</span>
             {% endif %}
           {% endif %}
-        </a>
+        </{{ tag }}>
       {% endif %}
     {% endfor %}
   {% endfor %}
 </div>
 
 <div class="leyenda">
-  <span><span class="dot" style="background:#111"></span>Trabajado</span>
-  <span><span class="dot" style="background:#f3eedf"></span>Festivo</span>
-  <span><span class="dot" style="background:#dfe7ec"></span>Vacaciones</span>
-  <span><span class="dot" style="background:#f0f0ee"></span>Ausencia</span>
-  <span><span class="dot" style="background:#fafaf9"></span>Descanso</span>
-  <span><span class="dot" style="background:#f7e7a8;border-color:#5a4500"></span>Por confirmar (día pasado)</span>
-  <span><span class="dot" style="background:repeating-linear-gradient(45deg,#fff,#fff 3px,#f0f0ee 3px,#f0f0ee 6px)"></span>Pendiente (futuro)</span>
+  <span><strong>Confirmado por ti:</strong></span>
+  <span><span class="dot" style="background:#111"></span>Trabajado ✓</span>
+  <span><span class="dot" style="background:#f3eedf"></span>Festivo ✓</span>
+  <span><span class="dot" style="background:#dfe7ec"></span>Vacaciones ✓</span>
+  <span><span class="dot" style="background:#f0f0ee"></span>Ausencia ✓</span>
+  <span><span class="dot" style="background:#fafaf9"></span>Descanso ✓</span>
+  <span style="border-left:1px solid var(--border);padding-left:14px;"><strong>Sin confirmar:</strong></span>
+  <span><span class="dot" style="background:#f7e7a8;border-color:#5a4500"></span>Por confirmar (laborable pasado)</span>
+  <span><span class="dot" style="background:repeating-linear-gradient(45deg,#fff,#fff 3px,#f0f0ee 3px,#f0f0ee 6px)"></span>Pendiente (laborable futuro)</span>
+  <span><span class="dot" style="background:#f3eedf;border-style:dashed"></span>Festivo del calendario (inferido)</span>
+  <span><span class="dot" style="background:#fafaf9;border-style:dashed"></span>Descanso semanal (inferido)</span>
+  <span><span class="dot" style="background:repeating-linear-gradient(135deg,#f5f5f4,#f5f5f4 2px,#ececea 2px,#ececea 4px);border-style:dashed"></span>Fuera de periodo</span>
   <span>* horario distinto del habitual</span>
 </div>
 {% endblock %}
