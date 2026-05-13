@@ -271,11 +271,13 @@ def editar_dia(
         raise HTTPException(status_code=400, detail="Fecha inválida.")
 
     if diario_service.dia_fuera_de_periodo(empleado, fecha):
+        alta = empleado.fecha_alta.strftime("%d/%m/%Y") if empleado.fecha_alta else "—"
+        baja = empleado.fecha_baja.strftime("%d/%m/%Y") if empleado.fecha_baja else "—"
         raise HTTPException(
             status_code=400,
             detail=(
-                f"La fecha {fecha.isoformat()} está fuera del periodo del "
-                f"empleado (alta {empleado.fecha_alta}, baja {empleado.fecha_baja})."
+                f"La fecha {fecha.strftime('%d/%m/%Y')} está fuera del periodo "
+                f"del empleado (alta {alta}, baja {baja})."
             ),
         )
 
@@ -328,7 +330,7 @@ def cerrar_y_generar(
         empleado, anio, mes, dias,
     )
     if pendientes:
-        fechas = ", ".join(p.isoformat() for p in pendientes[:5])
+        fechas = ", ".join(p.strftime("%d/%m/%Y") for p in pendientes[:5])
         extra = f" (+{len(pendientes) - 5} más)" if len(pendientes) > 5 else ""
         raise HTTPException(
             status_code=400,
@@ -374,6 +376,144 @@ def reabrir(
     return RedirectResponse(
         f"/diario/{anio}/{mes:02d}?empleado_id={empleado.id}", status_code=303,
     )
+
+
+@router.post("/{anio}/{mes}/bulk", name="diario_bulk")
+def guardar_bulk(
+    anio: int,
+    mes: int,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(require_login),
+    empleado_id: int | None = Form(default=None),
+    fechas: list[str] = Form(...),
+    tipo: str = Form(...),
+    inicio_jornada: str = Form(""),
+    inicio_pausa: str = Form(""),
+    fin_pausa: str = Form(""),
+    fin_jornada: str = Form(""),
+    observaciones: str = Form(""),
+):
+    """Aplica el mismo tipo/horario a un conjunto de fechas (selección múltiple).
+
+    Las fechas deben venir en formato ISO `YYYY-MM-DD`. Se ignoran las que no
+    pertenezcan al mes/año del path.
+    """
+    _validar_mes(anio, mes)
+    empleado = _resolver_empleado(db, current, empleado_id)
+
+    fechas_validas: list[date] = []
+    fechas_descartadas: list[str] = []
+    for iso in fechas:
+        try:
+            f = date.fromisoformat(iso)
+        except ValueError:
+            fechas_descartadas.append(iso)
+            continue
+        if f.year != anio or f.month != mes:
+            fechas_descartadas.append(iso)
+            continue
+        fechas_validas.append(f)
+
+    if not fechas_validas:
+        raise HTTPException(
+            status_code=400,
+            detail="No se ha recibido ninguna fecha válida en la selección.",
+        )
+
+    payload = DiaPayload(
+        tipo=tipo,
+        inicio_jornada=inicio_jornada or None,
+        inicio_pausa=inicio_pausa or None,
+        fin_pausa=fin_pausa or None,
+        fin_jornada=fin_jornada or None,
+        observaciones=observaciones,
+    )
+
+    resultado = diario_service.upsert_dias_bulk(db, empleado, fechas_validas, payload)
+
+    if resultado["errores"]:
+        # Aplicamos lo que se haya podido y devolvemos detalle de errores.
+        errs = "; ".join(f"{f}: {m}" for f, m in resultado["errores"][:5])
+        extra = f" (+{len(resultado['errores'])-5} más)" if len(resultado["errores"]) > 5 else ""
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Aplicados {resultado['aplicados']} de {len(fechas_validas)}. "
+                f"Errores: {errs}{extra}"
+            ),
+        )
+
+    suffix = f"?empleado_id={empleado.id}" if current.es_admin else ""
+    return RedirectResponse(f"/diario/{anio}/{mes:02d}{suffix}", status_code=303)
+
+
+@router.post("/{anio}/{mes}/bulk-revertir", name="diario_bulk_revertir")
+def revertir_bulk(
+    anio: int,
+    mes: int,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(require_login),
+    empleado_id: int | None = Form(default=None),
+    fechas: list[str] = Form(...),
+):
+    """Borra los `RegistroDiario` de un conjunto de fechas → vuelven a pendiente."""
+    _validar_mes(anio, mes)
+    empleado = _resolver_empleado(db, current, empleado_id)
+
+    fechas_validas: list[date] = []
+    for iso in fechas:
+        try:
+            f = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if f.year == anio and f.month == mes:
+            fechas_validas.append(f)
+    if not fechas_validas:
+        raise HTTPException(
+            status_code=400, detail="Ninguna fecha válida en la selección.",
+        )
+
+    resultado = diario_service.borrar_dias_bulk(db, empleado, fechas_validas)
+    if resultado["errores"]:
+        errs = "; ".join(f"{f}: {m}" for f, m in resultado["errores"][:5])
+        extra = f" (+{len(resultado['errores'])-5} más)" if len(resultado["errores"]) > 5 else ""
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Revertidos {resultado['borrados']} de {len(fechas_validas)}. "
+                f"Errores: {errs}{extra}"
+            ),
+        )
+
+    suffix = f"?empleado_id={empleado.id}" if current.es_admin else ""
+    return RedirectResponse(f"/diario/{anio}/{mes:02d}{suffix}", status_code=303)
+
+
+@router.post("/{anio}/{mes}/{dia}/borrar", name="diario_borrar_dia")
+def borrar_un_dia(
+    anio: int,
+    mes: int,
+    dia: int,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(require_login),
+    empleado_id: int | None = Form(default=None),
+):
+    """Revierte un día concreto a pendiente borrando su `RegistroDiario`."""
+    _validar_mes(anio, mes)
+    empleado = _resolver_empleado(db, current, empleado_id)
+    try:
+        fecha = date(anio, mes, dia)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha inválida.")
+    try:
+        diario_service.borrar_dia(db, empleado, fecha)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    suffix = f"?empleado_id={empleado.id}" if current.es_admin else ""
+    return RedirectResponse(f"/diario/{anio}/{mes:02d}{suffix}", status_code=303)
 
 
 @router.post("/{anio}/{mes}/{dia}", name="diario_guardar")

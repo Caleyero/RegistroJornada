@@ -22,8 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Empleado, RegistroDiario
 from app.models.registro_diario import (
-    FUENTE_AUTO, FUENTE_MANUAL, FUENTE_WIZARD,
-    TIPO_AUSENCIA, TIPO_DESCANSO, TIPO_FESTIVO, TIPO_TRABAJADO, TIPO_VACACIONES,
+    FUENTE_AUTO, FUENTE_MANUAL,
+    TIPO_AUSENCIA, TIPO_FESTIVO, TIPO_TRABAJADO, TIPO_VACACIONES,
     TIPOS_VALIDOS,
 )
 from app.services.festivos import FESTIVOS_ASTURIAS
@@ -192,9 +192,11 @@ def upsert_dia(
             f"Valores válidos: {sorted(TIPOS_VALIDOS)}."
         )
     if dia_fuera_de_periodo(empleado, fecha):
+        alta = empleado.fecha_alta.strftime("%d/%m/%Y") if empleado.fecha_alta else "—"
+        baja = empleado.fecha_baja.strftime("%d/%m/%Y") if empleado.fecha_baja else "—"
         raise ValueError(
-            f"La fecha {fecha.isoformat()} está fuera del periodo de alta "
-            f"del empleado (alta: {empleado.fecha_alta}, baja: {empleado.fecha_baja})."
+            f"La fecha {fecha.strftime('%d/%m/%Y')} está fuera del periodo de "
+            f"alta del empleado (alta: {alta}, baja: {baja})."
         )
 
     horarios = (
@@ -230,8 +232,8 @@ def upsert_dia(
     )
     if existente and existente.cerrado:
         raise PermissionError(
-            f"El día {fecha.isoformat()} está cerrado y no puede modificarse. "
-            "Pide al administrador que reabra el mes."
+            f"El día {fecha.strftime('%d/%m/%Y')} está cerrado y no puede "
+            "modificarse. Pide al administrador que reabra el mes."
         )
 
     obs = (payload.observaciones or "").strip() or None
@@ -328,9 +330,13 @@ def dias_a_payload_pdf(
         fecha = date(anio, mes, dia)
         iso = fecha.isoformat()
         if empleado.fecha_alta and fecha < empleado.fecha_alta:
-            ausencias.setdefault(iso, f"Antes de alta ({empleado.fecha_alta.isoformat()})")
+            ausencias.setdefault(
+                iso, f"Antes de alta ({empleado.fecha_alta.strftime('%d/%m/%Y')})",
+            )
         elif empleado.fecha_baja and fecha > empleado.fecha_baja:
-            ausencias.setdefault(iso, f"Tras baja ({empleado.fecha_baja.isoformat()})")
+            ausencias.setdefault(
+                iso, f"Tras baja ({empleado.fecha_baja.strftime('%d/%m/%Y')})",
+            )
 
     return {
         "empleado_id": empleado.id,
@@ -384,94 +390,80 @@ def mes_esta_cerrado(dias: list[RegistroDiario]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Sincronización inversa: tras un PDF del wizard, alinear los días
+# Revertir un día a "pendiente" (borrar la fila)
 # ---------------------------------------------------------------------------
 
-def sincronizar_desde_wizard(
-    db: Session, empleado: Empleado, anio: int, mes: int,
-    payload: dict[str, Any],
-) -> None:
-    """Vuelca un payload del wizard mensual sobre los `RegistroDiario` del mes.
+def borrar_dia(db: Session, empleado: Empleado, fecha: date) -> bool:
+    """Borra la fila `RegistroDiario` de (empleado, fecha) → vuelve a pendiente.
 
-    Para cada día del mes hasta el último día:
-      - Si está en `festivos` → tipo festivo con esa descripción.
-      - Si está en `vacaciones` → tipo vacaciones.
-      - Si está en `ausencias` → tipo ausencia con esa observación.
-      - Si su DOW no está en `dias_laborables` → tipo descanso.
-      - En caso contrario → tipo trabajado con horario tipo del payload, o el
-        override si existe para esa fecha.
-
-    Todos los días sincronizados quedan `cerrado=True` y `fuente='wizard'`.
+    Devuelve True si había fila y se borró. Lanza:
+    - `ValueError` si la fecha está fuera del periodo de alta/baja del empleado.
+    - `PermissionError` si la fila existe pero está `cerrado=True`.
     """
-    festivos = dict(payload.get("festivos") or {})
-    vacaciones = set(payload.get("vacaciones") or [])
-    ausencias = dict(payload.get("ausencias") or {})
-    overrides = dict(payload.get("overrides_horario") or {})
-    dias_laborables = set(payload.get("dias_laborables") or DEFAULT_DIAS_LABORABLES)
-
-    horario_tipo = {
-        "inicio_jornada": payload.get("inicio_jornada") or DEFAULT_INICIO_JORNADA,
-        "inicio_pausa": payload.get("inicio_pausa") or DEFAULT_INICIO_PAUSA,
-        "fin_pausa": payload.get("fin_pausa") or DEFAULT_FIN_PAUSA,
-        "fin_jornada": payload.get("fin_jornada") or DEFAULT_FIN_JORNADA,
-    }
-
-    existentes = {
-        r.fecha: r for r in (
-            db.query(RegistroDiario)
-            .filter(
-                RegistroDiario.empleado_id == empleado.id,
-                RegistroDiario.fecha >= date(anio, mes, 1),
-                RegistroDiario.fecha <= date(anio, mes, _ultimo_dia_mes(anio, mes)),
-            )
-            .all()
+    if dia_fuera_de_periodo(empleado, fecha):
+        raise ValueError(
+            f"La fecha {fecha.strftime('%d/%m/%Y')} está fuera del periodo de "
+            f"alta del empleado."
         )
-    }
-
-    for dia in range(1, _ultimo_dia_mes(anio, mes) + 1):
-        fecha = date(anio, mes, dia)
-        iso = fecha.isoformat()
-        if dia_fuera_de_periodo(empleado, fecha):
-            continue  # no se sincroniza nada fuera del periodo alta/baja
-
-        if iso in festivos:
-            tipo, obs = TIPO_FESTIVO, festivos[iso]
-            horarios = (None, None, None, None)
-        elif iso in vacaciones:
-            tipo, obs = TIPO_VACACIONES, None
-            horarios = (None, None, None, None)
-        elif iso in ausencias:
-            tipo, obs = TIPO_AUSENCIA, ausencias[iso]
-            horarios = (None, None, None, None)
-        elif fecha.weekday() not in dias_laborables:
-            tipo, obs = TIPO_DESCANSO, None
-            horarios = (None, None, None, None)
-        else:
-            tipo, obs = TIPO_TRABAJADO, None
-            ov = overrides.get(iso)
-            base = ov if ov else horario_tipo
-            horarios = (
-                base["inicio_jornada"], base["inicio_pausa"],
-                base["fin_pausa"], base["fin_jornada"],
-            )
-
-        ij, ip, fp, fj = horarios
-        existente = existentes.get(fecha)
-        if existente is None:
-            db.add(RegistroDiario(
-                empleado_id=empleado.id, fecha=fecha,
-                tipo=tipo, fuente=FUENTE_WIZARD, cerrado=True,
-                inicio_jornada=ij, inicio_pausa=ip, fin_pausa=fp, fin_jornada=fj,
-                observaciones=obs,
-            ))
-        else:
-            existente.tipo = tipo
-            existente.fuente = FUENTE_WIZARD
-            existente.cerrado = True
-            existente.inicio_jornada = ij
-            existente.inicio_pausa = ip
-            existente.fin_pausa = fp
-            existente.fin_jornada = fj
-            existente.observaciones = obs
-
+    existente = (
+        db.query(RegistroDiario)
+        .filter(
+            RegistroDiario.empleado_id == empleado.id,
+            RegistroDiario.fecha == fecha,
+        )
+        .first()
+    )
+    if existente is None:
+        return False
+    if existente.cerrado:
+        raise PermissionError(
+            f"El día {fecha.strftime('%d/%m/%Y')} pertenece a un mes cerrado "
+            "y no puede revertirse. Pide al administrador que reabra el mes."
+        )
+    db.delete(existente)
     db.commit()
+    return True
+
+
+def borrar_dias_bulk(
+    db: Session, empleado: Empleado, fechas: list[date],
+) -> dict[str, Any]:
+    """Borra varios `RegistroDiario` en bloque.
+
+    Devuelve `{borrados, errores}` siguiendo la misma convención que
+    `upsert_dias_bulk`.
+    """
+    borrados = 0
+    errores: list[tuple[str, str]] = []
+    for fecha in fechas:
+        try:
+            if borrar_dia(db, empleado, fecha):
+                borrados += 1
+        except (ValueError, PermissionError) as exc:
+            errores.append((fecha.isoformat(), str(exc)))
+    return {"borrados": borrados, "errores": errores}
+
+
+# ---------------------------------------------------------------------------
+# Upsert masivo (bulk) — selección múltiple desde el calendario
+# ---------------------------------------------------------------------------
+
+def upsert_dias_bulk(
+    db: Session, empleado: Empleado, fechas: list[date], payload: DiaPayload,
+) -> dict[str, Any]:
+    """Aplica `payload` a cada fecha de la lista vía `upsert_dia`.
+
+    Devuelve un dict con `aplicados` (nº de filas creadas o actualizadas) y
+    `errores` (lista de tuplas (fecha_iso, mensaje)) para que el router lo
+    devuelva al cliente. La operación es transaccional por día: si una fecha
+    falla, las demás siguen.
+    """
+    aplicados = 0
+    errores: list[tuple[str, str]] = []
+    for fecha in fechas:
+        try:
+            upsert_dia(db, empleado, fecha, payload)
+            aplicados += 1
+        except (ValueError, PermissionError) as exc:
+            errores.append((fecha.isoformat(), str(exc)))
+    return {"aplicados": aplicados, "errores": errores}

@@ -111,6 +111,65 @@
     color: var(--ink-4); cursor: default;
   }
   .cal-cell--fuera-periodo .cal-cell__num { color: var(--ink-4); }
+
+  /* Selección múltiple */
+  .cal-cell__check {
+    position: absolute; top: 4px; right: 22px;
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--ink-4);
+    background: var(--surface); display: none;
+  }
+  .cal-cell.is-selected { outline: 3px solid var(--ink); outline-offset: -3px; }
+  .cal-cell.is-selected .cal-cell__check {
+    display: inline-block; background: var(--ink);
+    border-color: var(--ink);
+  }
+  .cal-cell.is-selected .cal-cell__check::after {
+    content: "✓"; color: #fff; font-size: 11px;
+    line-height: 11px; display: block; text-align: center;
+  }
+  body.is-selecting .cal-cell[data-clickable] .cal-cell__check { display: inline-block; }
+
+  .bulk-panel {
+    position: sticky; bottom: 12px;
+    margin-top: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+    padding: 12px 14px;
+    display: none;
+    z-index: 10;
+  }
+  body.is-selecting .bulk-panel { display: block; }
+  .bulk-panel__head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 10px;
+  }
+  .bulk-panel__count {
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+  }
+  .bulk-panel__row {
+    display: grid; grid-template-columns: 160px repeat(4, 1fr) 2fr auto;
+    gap: 8px; align-items: end;
+  }
+  .bulk-panel .field__label {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    display: block; margin-bottom: 4px;
+  }
+  .bulk-panel select, .bulk-panel input {
+    width: 100%; height: 32px; padding: 4px 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    font-family: var(--mono); font-size: 13px;
+  }
+  .bulk-panel__hint {
+    font-size: 11px; color: var(--ink-3); margin-top: 6px;
+    font-family: var(--mono);
+  }
+  @media (max-width: 1024px) {
+    .bulk-panel__row { grid-template-columns: 1fr 1fr; }
+  }
   .diario-aviso-pendientes {
     padding: 10px 14px; background: #fff8e1;
     border: 1px solid #5a4500;
@@ -201,7 +260,7 @@
   <span>⚠</span>
   <span>
     Tienes <strong>{{ pendientes_pasados|length }} día(s) sin confirmar</strong>:
-    {% for f in pendientes_pasados[:6] %}<code>{{ f.isoformat() }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+    {% for f in pendientes_pasados[:6] %}<code>{{ f|dmy }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
     {% if pendientes_pasados|length > 6 %} y {{ pendientes_pasados|length - 6 }} más{% endif %}.
     Hasta que los confirmes, no puedes cerrar el mes.
   </span>
@@ -236,7 +295,9 @@
         {% set cell_class = "cal-cell cal-cell--" ~ (estado|replace('_','-')) %}
         {% set href = "/diario/" ~ anio ~ "/" ~ ('%02d' % mes) ~ "/" ~ cell.fecha.day ~ "/editar" ~ suffix %}
         {% set tag = "a" if cell.clickable else "div" %}
-        <{{ tag }} class="{{ cell_class }}" {% if cell.clickable %}href="{{ href }}"{% endif %}>
+        <{{ tag }} class="{{ cell_class }}"
+                   {% if cell.clickable %}href="{{ href }}" data-fecha="{{ cell.fecha.isoformat() }}" data-clickable="1"{% endif %}>
+          {% if cell.clickable %}<span class="cal-cell__check" aria-hidden="true"></span>{% endif %}
           <span class="cal-cell__num">{% if cell.es_hoy %}<span class="today">{{ cell.fecha.day }}</span>{% else %}{{ cell.fecha.day }}{% endif %}</span>
           {% if estado == 'fuera_periodo' %}
             <span class="cal-cell__badge badge-fuera">Fuera de periodo</span>
@@ -292,4 +353,224 @@
   <span><span class="dot" style="background:repeating-linear-gradient(135deg,#f5f5f4,#f5f5f4 2px,#ececea 2px,#ececea 4px);border-style:dashed"></span>Fuera de periodo</span>
   <span>* horario distinto del habitual</span>
 </div>
+
+<p class="bulk-panel__hint" style="margin-top:8px;">
+  <strong>Truco:</strong> mantén <kbd>Ctrl</kbd> (o <kbd>⌘</kbd>) + clic para
+  seleccionar varios días, o <kbd>Shift</kbd> + clic para marcar un rango. Una
+  vez seleccionados, aplica el mismo tipo y horario a todos de golpe.
+  <kbd>Esc</kbd> cancela la selección.
+</p>
+
+{% if not cerrado %}
+<form id="bulkForm" class="bulk-panel" method="post"
+      action="/diario/{{ anio }}/{{ '%02d' % mes }}/bulk">
+  {% if es_admin %}<input type="hidden" name="empleado_id" value="{{ empleado.id }}">{% endif %}
+  <div class="bulk-panel__head">
+    <span class="bulk-panel__count"><span id="bulkCount">0</span> día(s) seleccionados</span>
+    <span id="bulkFechasResumen" style="color:var(--ink-3);font-family:var(--mono);font-size:12px;"></span>
+    <button type="button" class="btn btn--ghost btn--sm" id="bulkClear" style="margin-left:auto">Cancelar selección (Esc)</button>
+  </div>
+  <div class="bulk-panel__row">
+    <div>
+      <label class="field__label" for="bulkTipo">Tipo</label>
+      <select id="bulkTipo" name="tipo">
+        <option value="trabajado">Trabajado</option>
+        <option value="festivo">Festivo</option>
+        <option value="vacaciones">Vacaciones</option>
+        <option value="ausencia">Ausencia</option>
+        <option value="descanso">Descanso</option>
+      </select>
+    </div>
+    <div id="bulkHorarios" style="display:contents">
+      <div>
+        <label class="field__label">Inicio jornada</label>
+        <input type="time" name="inicio_jornada" value="{{ horario_tipo.inicio_jornada }}">
+      </div>
+      <div>
+        <label class="field__label">Inicio pausa</label>
+        <input type="time" name="inicio_pausa" value="{{ horario_tipo.inicio_pausa }}">
+      </div>
+      <div>
+        <label class="field__label">Fin pausa</label>
+        <input type="time" name="fin_pausa" value="{{ horario_tipo.fin_pausa }}">
+      </div>
+      <div>
+        <label class="field__label">Fin jornada</label>
+        <input type="time" name="fin_jornada" value="{{ horario_tipo.fin_jornada }}">
+      </div>
+    </div>
+    <div>
+      <label class="field__label">Observaciones</label>
+      <input type="text" name="observaciones" placeholder="(opcional)">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;">
+      <button type="submit" class="btn btn--primary">Aplicar a <span id="bulkCountBtn">0</span></button>
+      <button type="button" class="btn" id="bulkRevertir"
+              style="border-color:#9a1b1b;color:#9a1b1b;">
+        Revertir <span id="bulkCountBtn2">0</span> a pendiente
+      </button>
+    </div>
+  </div>
+  <div id="bulkFechasInputs"></div>
+</form>
+
+<!-- Form oculto para revertir las fechas seleccionadas (acción separada) -->
+<form id="bulkRevertirForm" method="post"
+      action="/diario/{{ anio }}/{{ '%02d' % mes }}/bulk-revertir" style="display:none;">
+  {% if es_admin %}<input type="hidden" name="empleado_id" value="{{ empleado.id }}">{% endif %}
+  <div id="bulkRevertirInputs"></div>
+</form>
+{% endif %}
+
+<script>
+(function () {
+  const grid = document.querySelector('.cal-grid');
+  if (!grid) return;
+  const form = document.getElementById('bulkForm');
+  const tipoSel = document.getElementById('bulkTipo');
+  const horariosBox = document.getElementById('bulkHorarios');
+  const fechasInputs = document.getElementById('bulkFechasInputs');
+  const countSpan = document.getElementById('bulkCount');
+  const countBtn = document.getElementById('bulkCountBtn');
+  const countBtn2 = document.getElementById('bulkCountBtn2');
+  const resumenSpan = document.getElementById('bulkFechasResumen');
+  const clearBtn = document.getElementById('bulkClear');
+  const revertirBtn = document.getElementById('bulkRevertir');
+  const revertirForm = document.getElementById('bulkRevertirForm');
+  const revertirInputs = document.getElementById('bulkRevertirInputs');
+
+  function dmy(iso) {
+    const [y, m, d] = iso.split('-');
+    return d + '/' + m + '/' + y;
+  }
+
+  const seleccionadas = new Set();         // Set<ISO date>
+  let ultimaSel = null;                    // ISO date of last clicked cell (for shift+range)
+
+  function celdasOrdenadas() {
+    return Array.from(grid.querySelectorAll('.cal-cell[data-clickable="1"]'))
+      .sort((a, b) => a.dataset.fecha.localeCompare(b.dataset.fecha));
+  }
+
+  function actualizarUI() {
+    const fechas = Array.from(seleccionadas).sort();
+    document.body.classList.toggle('is-selecting', fechas.length > 0);
+    if (countSpan) countSpan.textContent = fechas.length;
+    if (countBtn) countBtn.textContent = fechas.length;
+    if (countBtn2) countBtn2.textContent = fechas.length;
+    if (resumenSpan) {
+      if (fechas.length === 0) {
+        resumenSpan.textContent = '';
+      } else if (fechas.length <= 4) {
+        resumenSpan.textContent = fechas.map(dmy).join(', ');
+      } else {
+        resumenSpan.textContent = fechas.slice(0, 3).map(dmy).join(', ') + ', … ' + dmy(fechas[fechas.length - 1]);
+      }
+    }
+    function rellenarInputs(box) {
+      if (!box) return;
+      box.innerHTML = '';
+      for (const f of fechas) {
+        const inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = 'fechas'; inp.value = f;
+        box.appendChild(inp);
+      }
+    }
+    rellenarInputs(fechasInputs);
+    rellenarInputs(revertirInputs);
+    for (const c of grid.querySelectorAll('.cal-cell[data-clickable="1"]')) {
+      c.classList.toggle('is-selected', seleccionadas.has(c.dataset.fecha));
+    }
+  }
+
+  function toggle(fecha) {
+    if (seleccionadas.has(fecha)) seleccionadas.delete(fecha);
+    else seleccionadas.add(fecha);
+    ultimaSel = fecha;
+  }
+
+  function rangoHasta(fecha) {
+    if (!ultimaSel) { toggle(fecha); return; }
+    const orden = celdasOrdenadas().map(c => c.dataset.fecha);
+    const i = orden.indexOf(ultimaSel);
+    const j = orden.indexOf(fecha);
+    if (i < 0 || j < 0) { toggle(fecha); return; }
+    const [a, b] = i <= j ? [i, j] : [j, i];
+    for (let k = a; k <= b; k++) seleccionadas.add(orden[k]);
+    ultimaSel = fecha;
+  }
+
+  function limpiar() {
+    seleccionadas.clear();
+    ultimaSel = null;
+    actualizarUI();
+  }
+
+  grid.addEventListener('click', (ev) => {
+    const cell = ev.target.closest('.cal-cell[data-clickable="1"]');
+    if (!cell) return;
+    const fecha = cell.dataset.fecha;
+    const haySeleccion = seleccionadas.size > 0;
+    if (ev.shiftKey) {
+      ev.preventDefault();
+      rangoHasta(fecha);
+      actualizarUI();
+      return;
+    }
+    if (ev.ctrlKey || ev.metaKey) {
+      ev.preventDefault();
+      toggle(fecha);
+      actualizarUI();
+      return;
+    }
+    if (haySeleccion) {
+      // Modo selección activo: click normal también togglea.
+      ev.preventDefault();
+      toggle(fecha);
+      actualizarUI();
+      return;
+    }
+    // sin modificador y sin selección → navegación normal (default anchor)
+  });
+
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && seleccionadas.size > 0) limpiar();
+  });
+
+  if (clearBtn) clearBtn.addEventListener('click', limpiar);
+
+  function refreshHorarios() {
+    const v = tipoSel.value === 'trabajado' ? '' : 'none';
+    for (const div of horariosBox.querySelectorAll('div')) div.style.display = v === 'none' ? 'none' : '';
+  }
+  if (tipoSel) {
+    tipoSel.addEventListener('change', refreshHorarios);
+    refreshHorarios();
+  }
+
+  if (form) {
+    form.addEventListener('submit', (ev) => {
+      if (seleccionadas.size === 0) {
+        ev.preventDefault();
+        alert('No hay días seleccionados.');
+        return;
+      }
+      if (!confirm('Aplicar a ' + seleccionadas.size + ' día(s) seleccionado(s)?')) {
+        ev.preventDefault();
+      }
+    });
+  }
+
+  if (revertirBtn) {
+    revertirBtn.addEventListener('click', () => {
+      if (seleccionadas.size === 0) return;
+      if (!confirm('Revertir ' + seleccionadas.size + ' día(s) a pendiente? '
+                   + 'Se borrarán esos registros (no se puede deshacer).')) {
+        return;
+      }
+      revertirForm.submit();
+    });
+  }
+})();
+</script>
 {% endblock %}

@@ -30,7 +30,7 @@
         {% endif %}
     </div>
     <div class="actions">
-        <a href="/registros/nuevo" class="btn btn--primary">+ NUEVO REGISTRO</a>
+        <a href="/diario" class="btn btn--primary">+ NUEVO REGISTRO</a>
     </div>
 </header>
 
@@ -70,7 +70,7 @@
                 <td><span class="small">{{ r.created_at.strftime("%d/%m/%Y %H:%M") if r.created_at else "" }}</span></td>
                 <td class="col-actions">
                     <a href="/registros/{{ r.id }}/pdf" class="icon-btn" title="Descargar PDF">↓</a>
-                    <a href="/registros/{{ r.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    <a href="/diario/{{ r.anio }}/{{ '%02d' % r.mes }}{% if es_admin %}?empleado_id={{ r.empleado_id }}{% endif %}" class="icon-btn" title="Abrir mes en el calendario">✎</a>
                     <form method="post" action="/registros/{{ r.id }}/eliminar" style="display:inline;"
                           onsubmit="return confirm('¿Eliminar el registro de {{ meses[r.mes] }} {{ r.anio }}?');">
                         <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
@@ -83,9 +83,9 @@
 </div>
 {% elif not aviso %}
 <div class="empty">
-    Aún no hay PDFs mensuales generados. Rellena tu jornada en
-    <a href="/diario">/diario</a> y al cerrar el mes se generará el primero
-    automáticamente. También puedes <a href="/registros/nuevo">crearlo a mano con el asistente →</a>
+    Aún no hay PDFs mensuales generados. <a href="/diario">Abre el calendario →</a>,
+    confirma los días del mes y pulsa "Generar PDF y guardar" cuando todos
+    estén cumplimentados.
 </div>
 {% endif %}
 {% endblock %}

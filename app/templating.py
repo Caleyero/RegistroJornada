@@ -10,6 +10,7 @@ para que el navbar y la lógica condicional por rol funcionen sin
 duplicar la carga del usuario en cada endpoint.
 """
 
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,30 @@ from sqlalchemy.orm import Session
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+
+def _dmy(value: Any) -> str:
+    """Filtro Jinja `|dmy`: convierte una fecha (date/datetime/ISO str) a DD/MM/YYYY.
+
+    Si recibe `None` o cadena vacía devuelve "". Para `datetime` ignora la hora.
+    Para strings asume formato ISO `YYYY-MM-DD` (los primeros 10 caracteres).
+    Si el formato no es reconocible, devuelve el valor original sin tocar.
+    """
+    if value in (None, ""):
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value[:10]).strftime("%d/%m/%Y")
+        except ValueError:
+            return value
+    return str(value)
+
+
+templates.env.filters["dmy"] = _dmy
 
 
 def render(request: Request, db: Session | None, name: str, **context: Any):

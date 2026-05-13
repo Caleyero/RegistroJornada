@@ -50,7 +50,7 @@
   <div>
     <div class="kicker">{% if es_admin %}Diario · {{ empleado.apellidos }}, {{ empleado.nombre }}{% else %}Mi jornada{% endif %} / {{ meses[mes] }} {{ anio }}</div>
     <h1 class="h1">{{ dias_semana_es[fecha.weekday()] }} {{ fecha.day }} de {{ meses[mes] }} de {{ fecha.year }}</h1>
-    <div class="sub">Fecha en formato registro: <code>{{ fecha.isoformat() }}</code></div>
+    <div class="sub">Fecha: <code>{{ fecha|dmy }}</code></div>
   </div>
   <div class="actions">
     <a class="btn btn--ghost" href="/diario/{{ anio }}/{{ '%02d' % mes }}{{ suffix }}">← Volver al calendario</a>
@@ -143,6 +143,22 @@
       <a class="btn btn--ghost" href="/diario/{{ anio }}/{{ '%02d' % mes }}{{ suffix }}">Cancelar</a>
     </div>
   </form>
+
+  {% if registro and not registro.cerrado %}
+  <form method="post" action="/diario/{{ anio }}/{{ '%02d' % mes }}/{{ dia }}/borrar"
+        style="margin-top:14px;border-top:1px dashed var(--border);padding-top:14px;"
+        onsubmit="return confirm('¿Revertir este día a pendiente? Se borrará el registro confirmado (no se puede deshacer).');">
+    {% if es_admin %}<input type="hidden" name="empleado_id" value="{{ empleado.id }}">{% endif %}
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button type="submit" class="btn"
+              style="border-color:#9a1b1b;color:#9a1b1b;">Revertir a pendiente</button>
+      <span style="font-size:12px;color:var(--ink-3);">
+        Borra el registro de este día para que vuelva a aparecer como "Por confirmar".
+        Útil si lo marcaste por error.
+      </span>
+    </div>
+  </form>
+  {% endif %}
 </div>
 
 <script>

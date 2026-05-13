@@ -1,10 +1,9 @@
-"""Asistente de registro mensual + historial.
+"""Histórico de PDFs mensuales.
 
-Usuario normal: solo ve / opera sobre SUS propios registros (filtrados por
-empleado_id). Admin: ve y opera sobre todos.
+El alta de un nuevo registro mensual se hace desde `/diario` (calendario
+diario). Este router conserva solo el listado, la descarga del PDF guardado
+y la eliminación. Las URLs antiguas del wizard redirigen al calendario.
 """
-
-from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -14,8 +13,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_login
 from app.dependencies import get_db
 from app.models import Empleado, Registro, Usuario
-from app.services import diario_service, pdf_service
-from app.services.festivos import FESTIVOS_ASTURIAS
+from app.services import pdf_service
 from app.templating import render
 
 
@@ -139,77 +137,29 @@ def _nombre_pdf(registro: Registro) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Asistente (wizard)
+# Compatibilidad: redirigir URLs antiguas del wizard al calendario diario
 # ---------------------------------------------------------------------------
 
-@router.get("/nuevo", response_class=HTMLResponse, name="registros_new")
-def nuevo_registro(
-    request: Request,
+@router.get("/nuevo", name="registros_new")
+def nuevo_registro_compat():
+    """Redirección permanente al calendario diario (nuevo flujo unificado)."""
+    return RedirectResponse("/diario", status_code=303)
+
+
+@router.get("/{registro_id}/editar", name="registros_edit")
+def editar_registro_compat(
+    registro_id: int,
     db: Session = Depends(get_db),
     current: Usuario = Depends(require_login),
 ):
-    if current.es_admin:
-        empleados = (
-            db.query(Empleado)
-            .filter(Empleado.activo == True)  # noqa: E712
-            .order_by(Empleado.apellidos, Empleado.nombre)
-            .all()
-        )
-        empleado_lock = False
-    else:
-        empleados = [_empleado_para_usuario(db, current)]
-        empleado_lock = True
-
-    hoy = date.today()
-    return render(
-        request, db, "registros/wizard.html",
-        current_user=current,
-        empleados_lista=empleados,
-        empleado_lock=empleado_lock,
-        festivos_asturias=FESTIVOS_ASTURIAS,
-        anio_default=hoy.year,
-        mes_default=hoy.month,
-    )
-
-
-@router.post("/generar", name="registros_generar")
-async def generar_pdf(
-    payload: RegistroPayload,
-    db: Session = Depends(get_db),
-    current: Usuario = Depends(require_login),
-):
-    """Guarda el registro y devuelve el PDF."""
-    # Validación de propiedad: si no es admin, solo puede generar para sí mismo.
-    if not current.es_admin:
-        if current.empleado_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tu usuario no está vinculado a ningún empleado.",
-            )
-        if payload.empleado_id != current.empleado_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No puedes generar registros de otros empleados.",
-            )
-
-    empleado = db.get(Empleado, payload.empleado_id)
-    if not empleado:
-        raise HTTPException(status_code=404, detail="Empleado no encontrado.")
-    if not payload.dias_laborables:
-        raise HTTPException(status_code=400, detail="Marca al menos un día laborable.")
-
-    registro = _upsert_registro(db, payload)
-    # El wizard mensual es ahora un mecanismo de regularización: sincronizamos
-    # los RegistroDiario del mes con el contenido del payload y los marcamos
-    # como cerrados. Así diario y mensual permanecen coherentes.
-    diario_service.sincronizar_desde_wizard(
-        db, empleado, payload.anio, payload.mes, payload.model_dump(),
-    )
-    pdf_bytes = _generar_pdf_desde_registro(registro)
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{_nombre_pdf(registro)}"'},
+    """El wizard antiguo de edición ya no existe; abrimos el calendario del mes."""
+    registro = db.get(Registro, registro_id)
+    if not registro:
+        raise HTTPException(status_code=404, detail="Registro no encontrado.")
+    _ensure_owner_or_admin(registro, current)
+    suffix = f"?empleado_id={registro.empleado_id}" if current.es_admin else ""
+    return RedirectResponse(
+        f"/diario/{registro.anio}/{registro.mes:02d}{suffix}", status_code=303,
     )
 
 
@@ -265,54 +215,6 @@ def descargar_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{_nombre_pdf(registro)}"'},
-    )
-
-
-@router.get("/{registro_id}/editar", response_class=HTMLResponse, name="registros_edit")
-def editar_registro(
-    registro_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-    current: Usuario = Depends(require_login),
-):
-    """Reabre el wizard precargado con un registro existente."""
-    registro = db.get(Registro, registro_id)
-    if not registro:
-        raise HTTPException(status_code=404, detail="Registro no encontrado.")
-    _ensure_owner_or_admin(registro, current)
-
-    if current.es_admin:
-        empleados = (
-            db.query(Empleado)
-            .filter(Empleado.activo == True)  # noqa: E712
-            .order_by(Empleado.apellidos, Empleado.nombre)
-            .all()
-        )
-        empleado_lock = False
-    else:
-        empleados = [_empleado_para_usuario(db, current)]
-        empleado_lock = True
-
-    return render(
-        request, db, "registros/wizard.html",
-        current_user=current,
-        empleados_lista=empleados,
-        empleado_lock=empleado_lock,
-        festivos_asturias=FESTIVOS_ASTURIAS,
-        anio_default=registro.anio,
-        mes_default=registro.mes,
-        registro_existente={
-            "empleado_id": registro.empleado_id,
-            "dias_laborables": registro.dias_laborables or [],
-            "inicio_jornada": registro.inicio_jornada,
-            "inicio_pausa": registro.inicio_pausa,
-            "fin_pausa": registro.fin_pausa,
-            "fin_jornada": registro.fin_jornada,
-            "festivos": registro.festivos or {},
-            "vacaciones": registro.vacaciones or [],
-            "ausencias": registro.ausencias or {},
-            "overrides_horario": registro.overrides_horario or {},
-        },
     )
 
 

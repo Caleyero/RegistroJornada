@@ -18,13 +18,11 @@
         <a class="nav__link {% if request.url.path.startswith('/centros') %}is-active{% endif %}" href="/centros">CENTROS</a>
         <a class="nav__link {% if request.url.path.startswith('/empleados') %}is-active{% endif %}" href="/empleados">EMPLEADOS</a>
         <a class="nav__link {% if request.url.path.startswith('/admin/usuarios') %}is-active{% endif %}" href="/admin/usuarios">USUARIOS</a>
-        <a class="nav__link {% if request.url.path.startswith('/diario') %}is-active{% endif %}" href="/diario">DIARIO</a>
-        <a class="nav__link {% if request.url.path == '/registros' or (request.url.path.startswith('/registros/') and '/nuevo' not in request.url.path) %}is-active{% endif %}" href="/registros">REGISTROS</a>
-        <a class="nav__link {% if '/registros/nuevo' in request.url.path %}is-active{% endif %}" href="/registros/nuevo">+ NUEVO REGISTRO</a>
+        <a class="nav__link {% if request.url.path.startswith('/diario') %}is-active{% endif %}" href="/diario">+ NUEVO REGISTRO</a>
+        <a class="nav__link {% if request.url.path == '/registros' or request.url.path.startswith('/registros/') %}is-active{% endif %}" href="/registros">HISTÓRICO PDF</a>
     {% elif current_user %}
-        <a class="nav__link {% if request.url.path.startswith('/diario') %}is-active{% endif %}" href="/diario">MI JORNADA</a>
-        <a class="nav__link {% if request.url.path == '/registros' or (request.url.path.startswith('/registros/') and '/nuevo' not in request.url.path) %}is-active{% endif %}" href="/registros">HISTÓRICO PDF</a>
-        <a class="nav__link {% if '/registros/nuevo' in request.url.path %}is-active{% endif %}" href="/registros/nuevo">+ PDF MENSUAL</a>
+        <a class="nav__link {% if request.url.path.startswith('/diario') %}is-active{% endif %}" href="/diario">+ NUEVO REGISTRO</a>
+        <a class="nav__link {% if request.url.path == '/registros' or request.url.path.startswith('/registros/') %}is-active{% endif %}" href="/registros">HISTÓRICO PDF</a>
     {% endif %}
 
     {% if current_user %}
