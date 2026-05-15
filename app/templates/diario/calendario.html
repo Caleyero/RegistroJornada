@@ -209,7 +209,7 @@
       <form method="post" action="/diario/{{ anio }}/{{ '%02d' % mes }}/cerrar" style="display:inline">
         {% if es_admin %}<input type="hidden" name="empleado_id" value="{{ empleado.id }}">{% endif %}
         <button class="btn btn--primary" type="submit"
-          {% if pendientes_pasados %}disabled title="Quedan {{ pendientes_pasados|length }} día(s) sin confirmar"{% endif %}
+          {% if pendientes_cierre %}disabled title="Quedan {{ pendientes_cierre|length }} día(s) laborable(s) sin confirmar en el mes"{% endif %}
           onclick="return confirm('Se generará el PDF mensual y el mes quedará cerrado. ¿Continuar?');">
           ↓ Cerrar mes y generar PDF
         </button>
@@ -259,10 +259,19 @@
 <div class="diario-aviso-pendientes">
   <span>⚠</span>
   <span>
-    Tienes <strong>{{ pendientes_pasados|length }} día(s) sin confirmar</strong>:
+    Tienes <strong>{{ pendientes_pasados|length }} día(s) pasado(s) sin confirmar</strong>:
     {% for f in pendientes_pasados[:6] %}<code>{{ f|dmy }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
     {% if pendientes_pasados|length > 6 %} y {{ pendientes_pasados|length - 6 }} más{% endif %}.
     Hasta que los confirmes, no puedes cerrar el mes.
+  </span>
+</div>
+{% elif pendientes_cierre %}
+<div class="diario-aviso-pendientes">
+  <span>⚠</span>
+  <span>
+    Quedan <strong>{{ pendientes_cierre|length }} día(s) laborable(s) sin confirmar</strong>
+    en el mes (futuros). Hasta cumplimentarlos todos no puedes cerrar el mes
+    (salvo cese del empleado dentro del mes).
   </span>
 </div>
 {% endif %}

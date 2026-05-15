@@ -139,6 +139,10 @@ def pendientes_laborables_pasados(
 ) -> list[date]:
     """Devuelve fechas laborables (según perfil) <= hoy del mes sin fila.
 
+    Uso: marcado visual en el calendario (celdas rojas "pendiente_pasado")
+    y aviso en pantalla. Para validar el cierre del mes usa
+    `pendientes_laborables_para_cierre`, que exige el mes completo.
+
     Reglas:
     - Sólo cuenta días en `dias_laborables_habituales` del empleado.
     - Excluye festivos del calendario asturiano (no requieren confirmación
@@ -154,6 +158,33 @@ def pendientes_laborables_pasados(
 
     pendientes: list[date] = []
     for dia in range(1, fin.day + 1):
+        fecha = date(anio, mes, dia)
+        if dia_fuera_de_periodo(empleado, fecha):
+            continue
+        if fecha in fechas_con_fila:
+            continue
+        if fecha.weekday() not in dias_laborables:
+            continue
+        if fecha.isoformat() in FESTIVOS_ASTURIAS:
+            continue
+        pendientes.append(fecha)
+    return pendientes
+
+
+def pendientes_laborables_para_cierre(
+    empleado: Empleado, anio: int, mes: int, dias: list[RegistroDiario],
+) -> list[date]:
+    """Fechas laborables del mes (completo) sin confirmar, bloqueantes del cierre.
+
+    Igual que `pendientes_laborables_pasados` pero exige el mes entero:
+    no se puede cerrar un mes a medias salvo cese del empleado. La
+    excepción del cese se aplica automáticamente porque
+    `dia_fuera_de_periodo` excluye los días posteriores a `fecha_baja`.
+    """
+    dias_laborables = set(dias_laborables_de_empleado(empleado))
+    fechas_con_fila = {d.fecha for d in dias}
+    pendientes: list[date] = []
+    for dia in range(1, _ultimo_dia_mes(anio, mes) + 1):
         fecha = date(anio, mes, dia)
         if dia_fuera_de_periodo(empleado, fecha):
             continue

@@ -146,6 +146,9 @@ def calendario(
     pendientes_pasados = diario_service.pendientes_laborables_pasados(
         empleado, anio, mes, dias,
     )
+    pendientes_cierre = diario_service.pendientes_laborables_para_cierre(
+        empleado, anio, mes, dias,
+    )
     set_pendientes_pasados = set(pendientes_pasados)
     hoy = date.today()
 
@@ -247,6 +250,7 @@ def calendario(
         horas_str=horas_str,
         dias_trabajados=dias_trabajados,
         pendientes_pasados=pendientes_pasados,
+        pendientes_cierre=pendientes_cierre,
     )
 
 
@@ -326,7 +330,7 @@ def cerrar_y_generar(
 
     dias = diario_service.cargar_mes(db, empleado, anio, mes)
 
-    pendientes = diario_service.pendientes_laborables_pasados(
+    pendientes = diario_service.pendientes_laborables_para_cierre(
         empleado, anio, mes, dias,
     )
     if pendientes:
@@ -337,7 +341,9 @@ def cerrar_y_generar(
             detail=(
                 f"No se puede cerrar el mes: hay {len(pendientes)} día(s) "
                 f"laborable(s) sin confirmar: {fechas}{extra}. Abre cada uno "
-                "en el calendario y confírmalo antes de generar el PDF mensual."
+                "en el calendario y confírmalo antes de generar el PDF mensual. "
+                "El mes solo puede cerrarse a medias si el empleado ha cesado "
+                "(con fecha de baja dentro del mes)."
             ),
         )
 
