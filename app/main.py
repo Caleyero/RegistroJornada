@@ -18,7 +18,8 @@ from app.database import Base, SessionLocal, engine
 from app.dependencies import get_db
 from app.models import CentroTrabajo, Empleado, Empresa, Registro, Usuario
 from app.routers import (
-    admin_usuarios, centros, diario, empleados, empresas, registros,
+    admin_usuarios, centros, centros_config, config_excel, diario, empleados,
+    empresas, planificacion, registros, vacaciones,
 )
 from app.templating import render
 
@@ -62,6 +63,44 @@ with engine.begin() as conn:
         if col not in cols_emp:
             conn.exec_driver_sql(f"ALTER TABLE empleados ADD COLUMN {col} {ddl}")
 
+    # Rol en usuarios (módulo de planificación): `rol` es la nueva fuente de
+    # verdad del nivel de acceso (admin/rrhh/empleado). Se siembra a partir
+    # del `es_admin` preexistente, que se conserva como columna espejo.
+    cols_usr = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(usuarios)")}
+    if "rol" not in cols_usr:
+        conn.exec_driver_sql(
+            "ALTER TABLE usuarios ADD COLUMN rol VARCHAR(10) "
+            "NOT NULL DEFAULT 'empleado'"
+        )
+        conn.exec_driver_sql("UPDATE usuarios SET rol='admin' WHERE es_admin=1")
+
+    # Disponibilidad del empleado para la planificación de turnos.
+    for col, ddl in (
+        ("admite_horas_extras", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("disponible_desplazamiento", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("dias_vacaciones_anuales", "INTEGER NOT NULL DEFAULT 30"),
+    ):
+        if col not in cols_emp:
+            conn.exec_driver_sql(f"ALTER TABLE empleados ADD COLUMN {col} {ddl}")
+
+    # Pausa de mediodía en el horario de apertura (tiendas con jornada partida).
+    tablas = {
+        r[0] for r in conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    if "centro_horario_apertura" in tablas:
+        cols_hor = {
+            r[1] for r in conn.exec_driver_sql(
+                "PRAGMA table_info(centro_horario_apertura)"
+            )
+        }
+        for col in ("inicio_pausa", "fin_pausa"):
+            if col not in cols_hor:
+                conn.exec_driver_sql(
+                    f"ALTER TABLE centro_horario_apertura ADD COLUMN {col} VARCHAR(5)"
+                )
+
     # Limpieza one-shot: el flujo diario ya no auto-confirma nada. Si existen
     # filas con fuente='auto' (residuos de versiones intermedias), se borran.
     # Las filas con fuente='manual' o 'wizard' representan acto del usuario y
@@ -95,12 +134,12 @@ def _bootstrap_admin() -> None:
     try:
         usuario = db.query(Usuario).filter(Usuario.dni == dni).one_or_none()
         if usuario is None:
-            usuario = Usuario(dni=dni, es_admin=True, activo=True, empleado_id=None)
+            usuario = Usuario(dni=dni, rol="admin", activo=True, empleado_id=None)
             db.add(usuario)
             db.commit()
             log.info("Bootstrap admin: creado usuario %s con rol admin.", dni)
         elif not usuario.es_admin or not usuario.activo:
-            usuario.es_admin = True
+            usuario.rol = "admin"
             usuario.activo = True
             db.commit()
             log.info("Bootstrap admin: usuario %s promovido a admin/activo.", dni)
@@ -118,10 +157,14 @@ _bootstrap_admin()
 app.include_router(auth_router.router)
 app.include_router(empresas.router)
 app.include_router(centros.router)
+app.include_router(centros_config.router)
 app.include_router(empleados.router)
 app.include_router(registros.router)
 app.include_router(diario.router)
 app.include_router(admin_usuarios.router)
+app.include_router(planificacion.router)
+app.include_router(vacaciones.router)
+app.include_router(config_excel.router)
 
 
 @app.exception_handler(HTTPException)

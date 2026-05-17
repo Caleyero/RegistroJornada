@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Asignar turno · {{ centro.nombre }}{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Planificación / {{ centro.nombre }}</div>
+        <h1 class="h1">Asignar turno «{{ turno.nombre }}»</h1>
+        <div class="sub">
+            {{ dia_nombre }} {{ fecha|dmy }} ·
+            {{ turno.hora_inicio }}–{{ turno.hora_fin }}
+            {% if cobertura %} ·
+            <span class="cob cob--{{ cobertura.semaforo }}">{{ cobertura.texto }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="actions">
+        <a href="/planificacion/{{ centro.id }}?lunes={{ lunes }}" class="btn btn--ghost">← TABLERO</a>
+    </div>
+</header>
+
+<div class="panel mb-2" style="max-width: 820px;">
+    <div class="panel__head">
+        <span class="panel__title">DÍAS A ASIGNAR</span>
+    </div>
+    <div class="panel__body">
+        <p class="sub mb-2">
+            El empleado que elijas se asignará al turno «{{ turno.nombre }}» en
+            los días marcados. El día que abriste va siempre incluido; marca
+            más para planificar varios días de una sola vez.
+        </p>
+        <div class="dias-check">
+            {% for d in semana %}
+            {% set i = d.weekday() %}
+            <label class="dia-check {% if i == dia_base %}is-on{% endif %}"
+                   title="{{ d|dmy }}">
+                <input type="checkbox" class="dia-aplicar" value="{{ i }}"
+                       {% if i == dia_base %}checked disabled{% endif %}>
+                {{ ["L","M","X","J","V","S","D"][i] }}
+            </label>
+            {% endfor %}
+        </div>
+        <p class="sub" style="margin: 8px 0 0;">
+            Semana del {{ semana[0]|dmy }} al {{ semana[6]|dmy }}. Los días con
+            conflicto bloqueante se omiten y se informan después.
+        </p>
+    </div>
+</div>
+
+<div class="panel" style="max-width: 820px;">
+    <div class="panel__head">
+        <span class="panel__title">CANDIDATOS DISPONIBLES ({{ candidatos|length }})</span>
+    </div>
+    <div class="panel__body">
+        {% if not candidatos %}
+        <div class="empty">
+            No hay empleados disponibles para cubrir este turno: todos están
+            de vacaciones, ya tienen turno ese día o no pueden cubrir el centro.
+            Habilita más centros cubribles en la ficha de los empleados.
+        </div>
+        {% else %}
+        <p class="sub mb-2">
+            Ordenados por idoneidad: primero la plantilla del centro y quien no
+            arrastra avisos. Los avisos se calculan para {{ dia_nombre|lower }};
+            revísalos antes de asignar.
+        </p>
+        {% for cand in candidatos %}
+        <div class="candidato {% if loop.first and not cand.tiene_bloqueante %}candidato--top{% endif %}">
+            <div class="candidato__main">
+                <div class="candidato__nom">
+                    {{ cand.empleado.nombre_completo }}
+                    {% if cand.es_centro_propio %}
+                    <span class="tag tag--on">PROPIO</span>
+                    {% else %}
+                    <span class="tag">DESPLAZADO</span>
+                    {% endif %}
+                </div>
+                <div class="candidato__motivos">{{ cand.motivos|join(" · ") }}</div>
+                {% set conflictos = cand.conflictos %}
+                {% if conflictos %}
+                <div style="margin-top:6px;">
+                    {% include "_partials/conflictos.html" %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="candidato__accion">
+                {% if cand.tiene_bloqueante %}
+                <span class="sub">No asignable</span>
+                {% else %}
+                <form method="post" action="/planificacion/{{ centro.id }}/asignar"
+                      class="asignar-form" style="margin:0;">
+                    <input type="hidden" name="empleado_id" value="{{ cand.empleado.id }}">
+                    <input type="hidden" name="fecha" value="{{ fecha.isoformat() }}">
+                    <input type="hidden" name="plantilla_turno_id" value="{{ turno.id }}">
+                    <button class="btn {% if not cand.conflictos %}btn--primary{% endif %}" type="submit">
+                        ASIGNAR{% if cand.conflictos %} (con avisos){% endif %}
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Selector de días: refleja el marcado y, al asignar un candidato, inyecta
+// los días elegidos en su formulario para asignarlo a todos de una vez.
+document.querySelectorAll('.dia-aplicar').forEach(cb => {
+  cb.addEventListener('change', () => {
+    cb.closest('.dia-check').classList.toggle('is-on', cb.checked);
+  });
+});
+document.querySelectorAll('form.asignar-form').forEach(f => {
+  f.addEventListener('submit', () => {
+    f.querySelectorAll('input.dia-inject').forEach(e => e.remove());
+    document.querySelectorAll('.dia-aplicar:checked').forEach(cb => {
+      const h = document.createElement('input');
+      h.type = 'hidden';
+      h.name = 'dias';
+      h.value = cb.value;
+      h.className = 'dia-inject';
+      f.appendChild(h);
+    });
+  });
+});
+</script>
+{% endblock %}

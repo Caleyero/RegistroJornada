@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_admin
 from app.dependencies import get_db
 from app.models import Empleado, Usuario
+from app.models.usuario import ROL_ADMIN, ROL_EMPLEADO, ROLES_VALIDOS
 from app.services import excel_service
 from app.templating import render
 
@@ -101,9 +102,11 @@ def create_usuario(
     current: Usuario = Depends(require_admin),
     dni: str = Form(...),
     empleado_id: str = Form(""),
-    es_admin: bool = Form(False),
+    rol: str = Form(ROL_EMPLEADO),
     activo: bool = Form(False),
 ):
+    if rol not in ROLES_VALIDOS:
+        rol = ROL_EMPLEADO
     dni_norm = dni.strip().upper()
     if not dni_norm:
         empleados = _empleados_disponibles(db)
@@ -137,7 +140,7 @@ def create_usuario(
     usuario = Usuario(
         dni=dni_norm,
         empleado_id=emp_id,
-        es_admin=es_admin,
+        rol=rol,
         activo=activo,
     )
     db.add(usuario)
@@ -170,12 +173,15 @@ def update_usuario(
     current: Usuario = Depends(require_admin),
     dni: str = Form(...),
     empleado_id: str = Form(""),
-    es_admin: bool = Form(False),
+    rol: str = Form(ROL_EMPLEADO),
     activo: bool = Form(False),
 ):
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    if rol not in ROLES_VALIDOS:
+        rol = ROL_EMPLEADO
 
     dni_norm = dni.strip().upper()
     if not dni_norm:
@@ -218,7 +224,7 @@ def update_usuario(
             current_user=current, usuario=usuario, empleados=empleados,
             error="No puedes desactivar tu propio usuario.",
         )
-    if es_propio and not es_admin:
+    if es_propio and rol != ROL_ADMIN:
         empleados = _empleados_disponibles(db, usuario_actual_id=usuario.id)
         return render(
             request, db, "admin/usuarios/form.html",
@@ -227,7 +233,7 @@ def update_usuario(
         )
 
     # No degradar/desactivar al último admin activo
-    pierde_admin = usuario.es_admin and not es_admin
+    pierde_admin = usuario.es_admin and rol != ROL_ADMIN
     se_desactiva = usuario.activo and not activo
     if (pierde_admin or se_desactiva) and usuario.es_admin and usuario.activo:
         if _ultimo_admin_activo(db, excluir_id=usuario.id):
@@ -240,7 +246,7 @@ def update_usuario(
 
     usuario.dni = dni_norm
     usuario.empleado_id = emp_id
-    usuario.es_admin = es_admin
+    usuario.rol = rol
     usuario.activo = activo
     db.commit()
     return RedirectResponse("/admin/usuarios", status_code=303)

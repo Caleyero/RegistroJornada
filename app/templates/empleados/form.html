@@ -50,6 +50,10 @@
                     </option>
                     {% endfor %}
                 </select>
+                <p class="field__hint">
+                    Centro al que pertenece. Para que además pueda trabajar en otros
+                    centros, márcalos en «Disponibilidad para turnos», más abajo.
+                </p>
             </div>
         </div>
 
@@ -194,6 +198,67 @@
                 </p>
             </div>
         </div>
+    </div>
+
+    {# ────────────────────────────────────────────────────────────── #}
+    {# Disponibilidad: datos que usa el planificador de turnos.        #}
+    {# ────────────────────────────────────────────────────────────── #}
+    {% set ids_cub = (empleado.centros_cubribles | map(attribute='id') | list) if empleado else [] %}
+    <div class="panel" style="margin-top: 14px;">
+        <div class="panel__head">
+            <span class="panel__title">DISPONIBILIDAD PARA TURNOS</span>
+        </div>
+        <div class="panel__body">
+            <p class="sub" style="margin: 0 0 12px;">
+                Datos que usa el planificador para asignar turnos y proponer
+                sustituciones.
+            </p>
+            <div class="grid grid-3-eq mb-2">
+                <div class="field">
+                    <label class="check">
+                        <input type="checkbox" name="admite_horas_extras"
+                               {% if empleado and empleado.admite_horas_extras %}checked{% endif %}>
+                        Admite horas extras
+                    </label>
+                </div>
+                <div class="field">
+                    <label class="check">
+                        <input type="checkbox" name="disponible_desplazamiento"
+                               {% if empleado and empleado.disponible_desplazamiento %}checked{% endif %}>
+                        Disponible para desplazamiento
+                    </label>
+                </div>
+                <div class="field">
+                    <label class="field__label">Días de vacaciones al año</label>
+                    <input name="dias_vacaciones_anuales" type="number" min="0" max="60"
+                           class="input"
+                           value="{{ empleado.dias_vacaciones_anuales if empleado else 30 }}">
+                </div>
+            </div>
+
+            <div class="field">
+                <span class="field__label">Otros centros donde puede trabajar</span>
+                <p class="sub" style="margin: 2px 0 8px;">
+                    Un empleado pertenece a un único centro (el de arriba), pero
+                    puede trabajar en varios. Marca aquí los centros adicionales:
+                    el planificador podrá asignarle turnos en ellos. Su centro
+                    propio aparece atenuado porque ya está incluido siempre.
+                </p>
+                {% if centros|length > 1 %}
+                <div class="grid grid-3-eq">
+                    {% for c in centros %}
+                    <label class="check cubrible-opt">
+                        <input type="checkbox" name="centros_cubribles" value="{{ c.id }}"
+                               {% if c.id in ids_cub %}checked{% endif %}>
+                        {{ c.nombre }}{% if c.empresa %} <span class="sub">· {{ c.empresa.nombre }}</span>{% endif %}
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="sub">Solo hay un centro creado: no hay otros centros que asignar.</p>
+                {% endif %}
+            </div>
+        </div>
         <div class="panel__foot">
             <a href="/empleados" class="btn btn--ghost">CANCELAR</a>
             <button class="btn btn--primary" type="submit" {% if not empresas or not centros %}disabled{% endif %}>
@@ -210,5 +275,23 @@ document.querySelectorAll('.dia-check input[type=checkbox]').forEach(cb => {
     cb.parentElement.classList.toggle('is-on', cb.checked);
   });
 });
+
+// El centro propio del empleado siempre se cubre: su casilla en
+// "otros centros que puede cubrir" se deshabilita y se desmarca.
+const selCentro = document.querySelector('select[name=centro_trabajo_id]');
+function syncCentroPropio() {
+  const propio = selCentro ? selCentro.value : '';
+  document.querySelectorAll('input[name=centros_cubribles]').forEach(cb => {
+    const esPropio = cb.value === propio;
+    cb.disabled = esPropio;
+    if (esPropio) cb.checked = false;
+    const lbl = cb.closest('.cubrible-opt');
+    if (lbl) lbl.style.opacity = esPropio ? '0.4' : '';
+  });
+}
+if (selCentro) {
+  selCentro.addEventListener('change', syncCentroPropio);
+  syncCentroPropio();
+}
 </script>
 {% endblock %}

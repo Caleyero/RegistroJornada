@@ -24,5 +24,34 @@ class CentroTrabajo(Base):
     empresa = relationship("Empresa", back_populates="centros")
     empleados = relationship("Empleado", back_populates="centro_trabajo")
 
+    # Configuración para la planificación de turnos.
+    horarios_apertura = relationship(
+        "CentroHorarioApertura", back_populates="centro",
+        cascade="all, delete-orphan",
+    )
+    plantillas_turno = relationship(
+        "PlantillaTurno", back_populates="centro",
+        cascade="all, delete-orphan",
+    )
+    dotaciones = relationship(
+        "DotacionCentro", back_populates="centro",
+        cascade="all, delete-orphan",
+    )
+    periodos_no_aptos = relationship(
+        "PeriodoNoApto", back_populates="centro",
+        cascade="all, delete-orphan",
+    )
+    # Empleados (de cualquier centro) habilitados para cubrir este centro.
+    empleados_cubridores = relationship(
+        "Empleado",
+        secondary="empleado_centro_cubrible",
+        back_populates="centros_cubribles",
+    )
+    # Turnos planificados en este centro (se borran si el centro se elimina).
+    turnos_planificados = relationship(
+        "TurnoPlanificado", back_populates="centro",
+        cascade="all, delete",
+    )
+
     def __repr__(self) -> str:
         return f"<CentroTrabajo {self.nombre}>"

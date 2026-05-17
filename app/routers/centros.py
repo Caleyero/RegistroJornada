@@ -6,35 +6,39 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import require_admin
+from app.auth.dependencies import require_admin, require_rrhh
 from app.dependencies import get_db
 from app.models import CentroTrabajo, Empresa
 from app.services import excel_service
 from app.templating import render
 
 
-router = APIRouter(
-    prefix="/centros",
-    tags=["centros"],
-    dependencies=[Depends(require_admin)],
-)
+# El listado de centros lo pueden ver también RRHH (para entrar a la
+# configuración de turnos/dotación); el alta/edición/borrado del centro y
+# el import/export siguen siendo exclusivos del administrador.
+router = APIRouter(prefix="/centros", tags=["centros"])
 
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+_ADMIN = [Depends(require_admin)]
 
-@router.get("", response_class=HTMLResponse, name="centros_list")
+
+@router.get(
+    "", response_class=HTMLResponse, name="centros_list",
+    dependencies=[Depends(require_rrhh)],
+)
 def list_centros(request: Request, db: Session = Depends(get_db)):
     centros = db.query(CentroTrabajo).order_by(CentroTrabajo.nombre).all()
     return render(request, db, "centros/list.html", centros=centros)
 
 
-@router.get("/nuevo", response_class=HTMLResponse, name="centros_new")
+@router.get("/nuevo", response_class=HTMLResponse, name="centros_new", dependencies=_ADMIN)
 def new_centro_form(request: Request, db: Session = Depends(get_db)):
     empresas = db.query(Empresa).order_by(Empresa.nombre).all()
     return render(request, db, "centros/form.html", centro=None, empresas=empresas)
 
 
-@router.post("/nuevo", name="centros_create")
+@router.post("/nuevo", name="centros_create", dependencies=_ADMIN)
 def create_centro(
     db: Session = Depends(get_db),
     empresa_id: int = Form(...),
@@ -63,7 +67,10 @@ def create_centro(
     return RedirectResponse("/centros", status_code=303)
 
 
-@router.get("/{centro_id}/editar", response_class=HTMLResponse, name="centros_edit")
+@router.get(
+    "/{centro_id}/editar", response_class=HTMLResponse, name="centros_edit",
+    dependencies=_ADMIN,
+)
 def edit_centro_form(centro_id: int, request: Request, db: Session = Depends(get_db)):
     centro = db.get(CentroTrabajo, centro_id)
     if not centro:
@@ -72,7 +79,7 @@ def edit_centro_form(centro_id: int, request: Request, db: Session = Depends(get
     return render(request, db, "centros/form.html", centro=centro, empresas=empresas)
 
 
-@router.post("/{centro_id}/editar", name="centros_update")
+@router.post("/{centro_id}/editar", name="centros_update", dependencies=_ADMIN)
 def update_centro(
     centro_id: int,
     db: Session = Depends(get_db),
@@ -102,7 +109,7 @@ def update_centro(
     return RedirectResponse("/centros", status_code=303)
 
 
-@router.post("/{centro_id}/eliminar", name="centros_delete")
+@router.post("/{centro_id}/eliminar", name="centros_delete", dependencies=_ADMIN)
 def delete_centro(centro_id: int, db: Session = Depends(get_db)):
     centro = db.get(CentroTrabajo, centro_id)
     if not centro:
@@ -112,7 +119,7 @@ def delete_centro(centro_id: int, db: Session = Depends(get_db)):
     return RedirectResponse("/centros", status_code=303)
 
 
-@router.get("/exportar", name="centros_exportar")
+@router.get("/exportar", name="centros_exportar", dependencies=_ADMIN)
 def exportar_centros(db: Session = Depends(get_db)):
     contenido = excel_service.exportar_centros(db)
     fname = f"centros_{date.today().isoformat()}.xlsx"
@@ -123,12 +130,18 @@ def exportar_centros(db: Session = Depends(get_db)):
     )
 
 
-@router.get("/importar", response_class=HTMLResponse, name="centros_importar_form")
+@router.get(
+    "/importar", response_class=HTMLResponse, name="centros_importar_form",
+    dependencies=_ADMIN,
+)
 def importar_centros_form(request: Request, db: Session = Depends(get_db)):
     return render(request, db, "centros/import.html", resultado=None)
 
 
-@router.post("/importar", response_class=HTMLResponse, name="centros_importar")
+@router.post(
+    "/importar", response_class=HTMLResponse, name="centros_importar",
+    dependencies=_ADMIN,
+)
 async def importar_centros(
     request: Request,
     db: Session = Depends(get_db),

@@ -894,3 +894,93 @@
   .dia-check input[type=checkbox] {
     position: absolute; opacity: 0; pointer-events: none;
   }
+
+  /* ====================================================================
+   * Planificación de turnos y vacaciones
+   * ================================================================== */
+
+  /* Pestañas usadas como enlaces (configuración de centro). */
+  .tabs a.tab { text-decoration: none; display: inline-block; }
+
+  /* Semáforo de cobertura: planificado frente a dotación. */
+  .cob {
+    display: inline-block; padding: 1px 6px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.04em; border: 1px solid;
+  }
+  .cob--verde { background: #e7f3ea; border-color: #1f7a3d; color: #1f7a3d; }
+  .cob--ambar { background: var(--warn-tint); border-color: #8a6d12; color: #6f560e; }
+  .cob--rojo  { background: #f6e3e1; border-color: #a8261f; color: #a8261f; }
+  .cob--libre { background: var(--surface-3); border-color: var(--border); color: var(--ink-3); }
+
+  /* Tablero semanal de planificación. */
+  .plan {
+    width: 100%; border-collapse: collapse;
+    background: var(--surface); table-layout: fixed;
+  }
+  .plan th, .plan td {
+    border: 1px solid var(--border); vertical-align: top;
+  }
+  .plan thead th {
+    background: var(--ink); color: #fff;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.06em; padding: 6px 6px; text-align: center;
+  }
+  .plan thead th.is-hoy { background: var(--ink-2); }
+  .plan thead th small { display: block; font-weight: 400; opacity: 0.75; }
+  .plan tbody th {
+    background: var(--surface-2); text-align: left;
+    padding: 8px 8px; width: 120px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .plan tbody th small { display: block; color: var(--ink-3); font-weight: 400; }
+  .plan td { padding: 5px 5px; }
+
+  /* Chip de empleado asignado a un turno. */
+  .turno-chip {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 4px; padding: 2px 4px 2px 6px; margin-top: 3px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12px;
+  }
+  .turno-chip--borrador { border-style: dashed; }
+  .turno-chip__nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .turno-chip__x {
+    background: transparent; border: 0; cursor: pointer;
+    color: var(--ink-3); font-family: var(--mono); font-size: 12px;
+    padding: 0 2px; flex: none;
+  }
+  .turno-chip__x:hover { color: #a8261f; }
+  .plan-add {
+    display: inline-block; margin-top: 4px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--ink-3); text-decoration: none;
+  }
+  .plan-add:hover { color: var(--ink); }
+
+  /* Lista de conflictos / avisos (planificación y vacaciones). */
+  .conflicto {
+    padding: 6px 10px; margin-bottom: 6px;
+    font-family: var(--mono); font-size: 12px;
+    border-left: 3px solid var(--ink);
+  }
+  .conflicto--bloqueante { background: #f6e3e1; border-left-color: #a8261f; }
+  .conflicto--advertencia { background: var(--warn-tint); border-left-color: #8a6d12; }
+  .conflicto__sev {
+    font-weight: 700; letter-spacing: 0.08em; margin-right: 6px;
+  }
+
+  /* Ficha de candidato en el buscador de sustitutos. */
+  .candidato {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 12px; border: 1px solid var(--border);
+    margin-bottom: 8px; background: var(--surface);
+  }
+  .candidato--top { border-color: var(--ink); }
+  .candidato__main { flex: 1; min-width: 0; }
+  .candidato__nom { font-weight: 700; }
+  .candidato__motivos {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    margin-top: 2px;
+  }
+  .candidato__accion { flex: none; align-self: center; }

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dotación · {{ centro.nombre }}{% endblock %}
+
+{% block content %}
+{% set seccion = 'dotacion' %}
+{% include "centros/_config_nav.html" %}
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+{% if not turnos %}
+<div class="empty">
+    Define primero los turnos del centro para poder fijar su dotación.
+    <a href="/centros/{{ centro.id }}/turnos">Configurar turnos →</a>
+</div>
+{% else %}
+<form method="post" action="/centros/{{ centro.id }}/dotacion"
+      class="panel" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">DOTACIÓN DE PERSONAL (MÍN / MÁX POR DÍA Y TURNO)</span>
+    </div>
+    <div class="panel__body">
+        <p class="sub mb-2">
+            Personas necesarias en cada turno. Deja mínimo y máximo a 0 si ese
+            turno no opera ese día.
+        </p>
+        <table class="list-table">
+            <thead>
+                <tr>
+                    <th rowspan="2">DÍA</th>
+                    {% for t in turnos %}
+                    <th colspan="2" class="col-center">{{ t.nombre }}</th>
+                    {% endfor %}
+                </tr>
+                <tr>
+                    {% for t in turnos %}
+                    <th class="col-center">MÍN</th>
+                    <th class="col-center">MÁX</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for dow in range(7) %}
+                <tr>
+                    <td class="strong">{{ dias[dow] }}</td>
+                    {% for t in turnos %}
+                    {% set fila = dotacion.get(t.id, {}).get(dow) %}
+                    <td class="col-center">
+                        <input type="number" min="0" class="input" style="width:64px;"
+                               name="min_{{ t.id }}_{{ dow }}"
+                               value="{{ fila.minimo if fila else 0 }}">
+                    </td>
+                    <td class="col-center">
+                        <input type="number" min="0" class="input" style="width:64px;"
+                               name="max_{{ t.id }}_{{ dow }}"
+                               value="{{ fila.maximo if fila else 0 }}">
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="panel__foot">
+        <span class="sub">{{ turnos|length }} turno(s) configurado(s)</span>
+        <button class="btn btn--primary" type="submit">GUARDAR DOTACIÓN</button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

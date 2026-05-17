@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Excel de configuración{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Configuración</div>
+        <h1 class="h1">Excel de configuración</h1>
+        <div class="sub">
+            Exporta o importa en bloque la configuración de planificación
+            de toda la cadena.
+        </div>
+    </div>
+    <div class="actions">
+        <a href="/centros" class="btn btn--ghost">← CENTROS</a>
+    </div>
+</header>
+
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>ENTIDAD</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for clave, titulo in entidades %}
+            <tr>
+                <td class="strong">{{ titulo }}</td>
+                <td class="col-actions">
+                    <a href="/config-excel/{{ clave }}/exportar" class="btn btn--sm">↓ EXPORTAR</a>
+                    <a href="/config-excel/{{ clave }}/importar" class="btn btn--sm">↑ IMPORTAR</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p class="sub" style="margin-top:12px;">
+    Las propiedades de disponibilidad del empleado (horas extras, desplazamiento,
+    centros cubribles) se gestionan desde el
+    <a href="/empleados"><strong>Excel de empleados</strong></a>.
+</p>
+{% endblock %}

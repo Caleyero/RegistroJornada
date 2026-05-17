@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Horario · {{ centro.nombre }}{% endblock %}
+
+{% block content %}
+{% set seccion = 'horario' %}
+{% include "centros/_config_nav.html" %}
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="/centros/{{ centro.id }}/horario"
+      class="panel" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">HORARIO DE APERTURA</span>
+    </div>
+    <div class="panel__body">
+        <p class="sub mb-2">
+            Marca «cerrado» los días que el centro no abre. Para tiendas con
+            jornada partida, rellena el cierre y la reapertura del mediodía;
+            déjalos vacíos si el centro abre de forma continua. El botón
+            <strong>↧ Copiar</strong> de cada día lleva sus valores a todos
+            los días siguientes — rellena el lunes y cópialo a la semana.
+        </p>
+        <table class="list-table">
+            <thead>
+                <tr>
+                    <th>DÍA</th>
+                    <th class="col-center">CERRADO</th>
+                    <th>ABRE</th>
+                    <th>CIERRA MEDIODÍA</th>
+                    <th>ABRE TARDE</th>
+                    <th>CIERRE</th>
+                    <th class="col-center">COPIAR ↓</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in horario %}
+                <tr>
+                    <td class="strong">{{ dias[h.dia_semana] }}</td>
+                    <td class="col-center">
+                        <input type="checkbox" name="cerrado_{{ h.dia_semana }}"
+                               {% if h.cerrado %}checked{% endif %}>
+                    </td>
+                    <td>
+                        <input type="time" name="apertura_{{ h.dia_semana }}"
+                               class="input" value="{{ h.apertura or '' }}">
+                    </td>
+                    <td>
+                        <input type="time" name="inicio_pausa_{{ h.dia_semana }}"
+                               class="input" value="{{ h.inicio_pausa or '' }}">
+                    </td>
+                    <td>
+                        <input type="time" name="fin_pausa_{{ h.dia_semana }}"
+                               class="input" value="{{ h.fin_pausa or '' }}">
+                    </td>
+                    <td>
+                        <input type="time" name="cierre_{{ h.dia_semana }}"
+                               class="input" value="{{ h.cierre or '' }}">
+                    </td>
+                    <td class="col-center">
+                        {% if h.dia_semana < 6 %}
+                        <button type="button" class="btn btn--sm"
+                                data-copiar="{{ h.dia_semana }}"
+                                title="Copiar este día a todos los siguientes">
+                            ↧ Copiar
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="panel__foot">
+        <span class="sub">El mediodía es opcional (jornada continua)</span>
+        <button class="btn btn--primary" type="submit">GUARDAR HORARIO</button>
+    </div>
+</form>
+
+<script>
+// "Arrastrar" el horario de un día al resto de la semana: el botón ↧ Copiar
+// lleva los valores de su fila (cerrado + las cuatro horas) a los días
+// posteriores, para no teclear lo mismo siete veces.
+(function () {
+  const campos = ["apertura", "inicio_pausa", "fin_pausa", "cierre"];
+
+  function leerDia(dow) {
+    const fila = { cerrado: document.querySelector(`[name=cerrado_${dow}]`).checked };
+    campos.forEach(c => {
+      fila[c] = document.querySelector(`[name=${c}_${dow}]`).value;
+    });
+    return fila;
+  }
+
+  function aplicarDia(dow, fila) {
+    document.querySelector(`[name=cerrado_${dow}]`).checked = fila.cerrado;
+    campos.forEach(c => {
+      document.querySelector(`[name=${c}_${dow}]`).value = fila[c];
+    });
+  }
+
+  document.querySelectorAll("button[data-copiar]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const dow = parseInt(btn.dataset.copiar, 10);
+      const fila = leerDia(dow);
+      for (let d = dow + 1; d <= 6; d++) aplicarDia(d, fila);
+    });
+  });
+})();
+</script>
+{% endblock %}

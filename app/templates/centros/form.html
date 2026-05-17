@@ -8,6 +8,11 @@
         <h1 class="h1">{% if centro %}{{ centro.nombre }}{% else %}Nuevo centro de trabajo{% endif %}</h1>
         {% if centro and centro.empresa %}<div class="sub">{{ centro.empresa.nombre }}</div>{% endif %}
     </div>
+    {% if centro %}
+    <div class="actions">
+        <a href="/centros/{{ centro.id }}/horario" class="btn">⚙ TURNOS Y DOTACIÓN</a>
+    </div>
+    {% endif %}
 </header>
 
 {% if not empresas %}

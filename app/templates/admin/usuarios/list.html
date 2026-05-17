@@ -41,8 +41,9 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if u.es_admin %}<span class="tag tag--on">ADMIN</span>
-                    {% else %}<span class="tag">USUARIO</span>{% endif %}
+                    {% if u.rol == 'admin' %}<span class="tag tag--on">ADMIN</span>
+                    {% elif u.rol == 'rrhh' %}<span class="tag tag--on">RRHH</span>
+                    {% else %}<span class="tag">EMPLEADO</span>{% endif %}
                 </td>
                 <td class="col-center">
                     {% if u.activo %}<span class="tag tag--on">SÍ</span>

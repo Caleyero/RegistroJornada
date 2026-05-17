@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Periodos no aptos · {{ centro.nombre }}{% endblock %}
+
+{% block content %}
+{% set seccion = 'periodos' %}
+{% include "centros/_config_nav.html" %}
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<div class="panel mb-2" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">PERIODOS NO APTOS PARA VACACIONES</span>
+    </div>
+    <div class="panel__body">
+        <p class="sub mb-2">
+            Campañas, rebajas o inventario en los que conviene no conceder
+            vacaciones. Al planificarlas, el sistema avisará del solape.
+        </p>
+        {% if periodos %}
+        <table class="list-table">
+            <thead>
+                <tr>
+                    <th>NOMBRE</th>
+                    <th>DESDE</th>
+                    <th>HASTA</th>
+                    <th class="col-actions">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in periodos %}
+                <tr>
+                    <td class="strong">{{ p.nombre }}</td>
+                    <td>{{ p.fecha_inicio|dmy }}</td>
+                    <td>{{ p.fecha_fin|dmy }}</td>
+                    <td class="col-actions">
+                        <form method="post"
+                              action="/centros/{{ centro.id }}/periodos-no-aptos/{{ p.id }}/eliminar"
+                              style="display:inline;"
+                              onsubmit="return confirm('¿Eliminar el periodo {{ p.nombre|e }}?');">
+                            <button class="icon-btn icon-btn--danger" type="submit"
+                                    title="Eliminar">✕</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">No hay periodos no aptos definidos para este centro.</div>
+        {% endif %}
+    </div>
+</div>
+
+<form method="post" action="/centros/{{ centro.id }}/periodos-no-aptos/nuevo"
+      class="panel" style="max-width: 640px;">
+    <div class="panel__head">
+        <span class="panel__title">NUEVO PERIODO</span>
+    </div>
+    <div class="panel__body">
+        <div class="field mb-2">
+            <label class="field__label">Nombre <span class="req">*</span></label>
+            <input name="nombre" class="input" required
+                   placeholder="Rebajas de verano, Navidad, Inventario...">
+        </div>
+        <div class="grid grid-2">
+            <div class="field">
+                <label class="field__label">Desde <span class="req">*</span></label>
+                <input type="date" name="fecha_inicio" class="input" required>
+            </div>
+            <div class="field">
+                <label class="field__label">Hasta <span class="req">*</span></label>
+                <input type="date" name="fecha_fin" class="input" required>
+            </div>
+        </div>
+    </div>
+    <div class="panel__foot">
+        <span class="sub">Ambas fechas incluidas</span>
+        <button class="btn btn--primary" type="submit">+ AÑADIR PERIODO</button>
+    </div>
+</form>
+{% endblock %}

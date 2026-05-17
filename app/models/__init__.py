@@ -4,3 +4,10 @@ from app.models.empleado import Empleado  # noqa: F401
 from app.models.registro import Registro  # noqa: F401
 from app.models.registro_diario import RegistroDiario  # noqa: F401
 from app.models.usuario import Usuario  # noqa: F401
+from app.models.centro_horario import CentroHorarioApertura  # noqa: F401
+from app.models.plantilla_turno import PlantillaTurno  # noqa: F401
+from app.models.dotacion import DotacionCentro  # noqa: F401
+from app.models.periodo_no_apto import PeriodoNoApto  # noqa: F401
+from app.models.empleado_centro_cubrible import empleado_centro_cubrible  # noqa: F401
+from app.models.turno_planificado import TurnoPlanificado  # noqa: F401
+from app.models.periodo_vacaciones import PeriodoVacaciones  # noqa: F401

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Importar {{ titulo_entidad }}{% endblock %}
+
+{% block content %}
+{% set kicker = "Configuración / Excel" %}
+{% set titulo = "Importar: " ~ titulo_entidad %}
+{% set volver_url = "/config-excel" %}
+{% set exportar_url = "/config-excel/" ~ entidad ~ "/exportar" %}
+{% set post_url = "/config-excel/" ~ entidad ~ "/importar" %}
+{% include "_partials/import_excel.html" %}
+{% endblock %}

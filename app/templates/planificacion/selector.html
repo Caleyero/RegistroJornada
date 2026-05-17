@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Planificación de turnos{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Planificación</div>
+        <h1 class="h1">Planificación de turnos</h1>
+        <div class="sub">Elige un centro para abrir su tablero semanal.</div>
+    </div>
+</header>
+
+{% if centros %}
+<div class="stats">
+    {% for c in centros %}
+    <a class="stat" href="/planificacion/{{ c.id }}?lunes={{ lunes }}">
+        <div class="stat__kicker">{{ c.empresa.nombre if c.empresa else "Centro" }}</div>
+        <div class="stat__big" style="font-size:22px;">{{ c.nombre }}</div>
+        <div class="stat__sub">Abrir tablero de turnos →</div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty">No hay centros activos. Crea o activa un centro primero.</div>
+{% endif %}
+{% endblock %}

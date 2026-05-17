@@ -54,3 +54,17 @@ def require_admin(current: Usuario = Depends(require_login)) -> Usuario:
             detail="Se requiere rol de administrador.",
         )
     return current
+
+
+def require_rrhh(current: Usuario = Depends(require_login)) -> Usuario:
+    """Exige sesión válida con rol RRHH o admin.
+
+    Protege la planificación de turnos y la gestión de vacaciones. El
+    administrador pasa este filtro; un empleado normal recibe un 403.
+    """
+    if not current.puede_planificar:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de RRHH o de administrador.",
+        )
+    return current

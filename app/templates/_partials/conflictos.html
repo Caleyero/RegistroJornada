@@ -1,0 +1,12 @@
+{# Pinta una lista de conflictos del planificador.
+   Espera en contexto: `conflictos` (lista de objetos Conflicto). #}
+{% if conflictos %}
+<div class="conflictos">
+    {% for c in conflictos %}
+    <div class="conflicto conflicto--{{ c.severidad }}">
+        <span class="conflicto__sev">{% if c.es_bloqueante %}BLOQUEA{% else %}AVISO{% endif %}</span>
+        {{ c.mensaje }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

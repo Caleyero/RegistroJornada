@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Turnos · {{ centro.nombre }}{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Planificación / {{ centro.nombre }}</div>
+        <h1 class="h1">Semana del {{ dias[0]|dmy }} al {{ dias[6]|dmy }}</h1>
+        <div class="sub">
+            {{ total_turnos }} turno(s) planificado(s) ·
+            {{ n_borrador }} en borrador
+        </div>
+    </div>
+    <div class="actions">
+        <a href="/planificacion/{{ centro.id }}?lunes={{ semana_prev }}" class="btn btn--ghost">← ANTERIOR</a>
+        <a href="/planificacion/{{ centro.id }}?lunes={{ semana_sig }}" class="btn btn--ghost">SIGUIENTE →</a>
+        <form method="post" action="/planificacion/{{ centro.id }}/copiar-semana"
+              style="margin:0;"
+              onsubmit="return confirm('¿Copiar a esta semana los turnos de la semana anterior? Se añadirán como borrador y se omitirá lo que no encaje.');">
+            <input type="hidden" name="lunes" value="{{ lunes.isoformat() }}">
+            <button class="btn" type="submit">⇊ COPIAR SEMANA ANTERIOR</button>
+        </form>
+        {% if n_borrador %}
+        <form method="post" action="/planificacion/{{ centro.id }}/publicar" style="margin:0;">
+            <input type="hidden" name="lunes" value="{{ lunes.isoformat() }}">
+            <button class="btn btn--primary" type="submit">PUBLICAR SEMANA</button>
+        </form>
+        {% endif %}
+        {% if n_volcables %}
+        <form method="post" action="/planificacion/{{ centro.id }}/volcar" style="margin:0;"
+              onsubmit="return confirm('¿Volcar {{ n_volcables }} turno(s) publicado(s) al registro diario de los empleados?');">
+            <input type="hidden" name="lunes" value="{{ lunes.isoformat() }}">
+            <button class="btn" type="submit">VOLCAR AL REGISTRO ({{ n_volcables }})</button>
+        </form>
+        {% endif %}
+    </div>
+</header>
+
+{% if aviso %}<div class="alert">{{ aviso }}</div>{% endif %}
+
+{% if not turnos %}
+<div class="empty">
+    Este centro no tiene turnos definidos.
+    <a href="/centros/{{ centro.id }}/turnos">Configura sus turnos →</a>
+</div>
+{% else %}
+
+{% if huecos %}
+<div class="alert">
+    <strong>{{ huecos|length }}</strong> turno(s) por debajo de la dotación
+    mínima esta semana. Revisa las celdas en rojo.
+</div>
+{% endif %}
+
+<div class="panel">
+    <table class="plan">
+        <thead>
+            <tr>
+                <th>TURNO</th>
+                {% for d in dias %}
+                <th class="{% if d == hoy %}is-hoy{% endif %}">
+                    {{ dias_nombre[d.weekday()][:3]|upper }}
+                    <small>{{ d.day }}/{{ '%02d' % d.month }}</small>
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in turnos %}
+            <tr>
+                <th>{{ t.nombre }}<small>{{ t.hora_inicio }}–{{ t.hora_fin }}</small></th>
+                {% for d in dias %}
+                {% set fiso = d.isoformat() %}
+                {% set cob = cobertura[fiso][t.id] %}
+                {% set chips = asignaciones.get(fiso, {}).get(t.id, []) %}
+                <td>
+                    <span class="cob cob--{{ cob.semaforo }}" title="Planificados / mínimo–máximo">
+                        {{ cob.texto }}
+                    </span>
+                    {% for tp in chips %}
+                    <div class="turno-chip turno-chip--{{ tp.estado }}">
+                        <span class="turno-chip__nom" title="{{ tp.empleado.nombre_completo }} ({{ tp.estado }})">
+                            {{ tp.empleado.apellidos }}
+                        </span>
+                        <form method="post" action="/planificacion/turno/{{ tp.id }}/eliminar"
+                              style="margin:0;"
+                              onsubmit="return confirm('¿Quitar a {{ tp.empleado.nombre_completo|e }} de este turno?');">
+                            <button class="turno-chip__x" type="submit" title="Quitar">✕</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                    <a class="plan-add"
+                       href="/planificacion/{{ centro.id }}/asignar?fecha={{ fiso }}&plantilla_turno_id={{ t.id }}">
+                        + asignar
+                    </a>
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="legend">
+    <span><span class="cob cob--verde">ok</span> cubierto</span>
+    <span><span class="cob cob--rojo">faltan</span> por debajo del mínimo</span>
+    <span><span class="cob cob--ambar">exceso</span> por encima del máximo</span>
+    <span><span class="cob cob--libre">libre</span> sin dotación definida</span>
+</div>
+{% endif %}
+{% endblock %}

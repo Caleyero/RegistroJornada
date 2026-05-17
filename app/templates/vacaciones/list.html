@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Vacaciones y ausencias{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Planificación</div>
+        <h1 class="h1">Vacaciones y ausencias</h1>
+        <div class="sub">Vacaciones, bajas y permisos de la plantilla.</div>
+    </div>
+    <div class="actions">
+        <form method="get" action="/vacaciones" style="margin:0;">
+            <select name="centro_id" class="select" onchange="this.form.submit()">
+                <option value="0">Todos los centros</option>
+                {% for c in centros %}
+                <option value="{{ c.id }}" {% if c.id == centro_id %}selected{% endif %}>
+                    {{ c.nombre }}
+                </option>
+                {% endfor %}
+            </select>
+        </form>
+        <a href="/vacaciones/nuevo" class="btn btn--primary">+ NUEVO PERIODO</a>
+    </div>
+</header>
+
+{% if periodos %}
+<div class="panel">
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th>EMPLEADO</th>
+                <th>CENTRO</th>
+                <th>TIPO</th>
+                <th>DESDE</th>
+                <th>HASTA</th>
+                <th class="col-num">DÍAS</th>
+                <th>OBSERVACIONES</th>
+                <th class="col-actions">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in periodos %}
+            <tr>
+                <td class="strong">{{ p.empleado.nombre_completo }}</td>
+                <td>{{ p.empleado.centro_trabajo.nombre if p.empleado.centro_trabajo else "—" }}</td>
+                <td>
+                    {% if p.tipo == 'vacaciones' %}<span class="tag">{{ tipo_etiquetas[p.tipo]|upper }}</span>
+                    {% else %}<span class="tag tag--on">{{ tipo_etiquetas[p.tipo]|upper }}</span>{% endif %}
+                </td>
+                <td>{{ p.fecha_inicio|dmy }}</td>
+                <td>{{ p.fecha_fin|dmy }}</td>
+                <td class="col-num">{{ p.dias }}</td>
+                <td class="small">{{ p.observaciones or "—" }}</td>
+                <td class="col-actions">
+                    <a href="/vacaciones/{{ p.id }}/editar" class="icon-btn" title="Editar">✎</a>
+                    <form method="post" action="/vacaciones/{{ p.id }}/eliminar"
+                          style="display:inline;"
+                          onsubmit="return confirm('¿Eliminar este periodo de {{ p.empleado.nombre_completo|e }}?');">
+                        <button class="icon-btn icon-btn--danger" type="submit" title="Eliminar">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty">
+    No hay periodos registrados{% if centro_id %} para este centro{% endif %}.
+    <a href="/vacaciones/nuevo">Crea el primero →</a>
+</div>
+{% endif %}
+{% endblock %}

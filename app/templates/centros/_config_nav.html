@@ -1,0 +1,27 @@
+{# Cabecera + pestañas de configuración de un centro.
+   Espera en contexto: `centro` y `seccion`
+   ('horario' | 'turnos' | 'dotacion' | 'periodos'). #}
+<header class="page__head">
+    <div>
+        <div class="kicker">Centros / Configuración</div>
+        <h1 class="h1">{{ centro.nombre }}</h1>
+        <div class="sub">
+            {% if centro.empresa %}{{ centro.empresa.nombre }} · {% endif %}
+            Configuración para la planificación de turnos
+        </div>
+    </div>
+    <div class="actions">
+        <a href="/centros" class="btn btn--ghost">← CENTROS</a>
+    </div>
+</header>
+
+<div class="tabs">
+    <a class="tab {% if seccion == 'horario' %}is-active{% endif %}"
+       href="/centros/{{ centro.id }}/horario">HORARIO</a>
+    <a class="tab {% if seccion == 'turnos' %}is-active{% endif %}"
+       href="/centros/{{ centro.id }}/turnos">TURNOS</a>
+    <a class="tab {% if seccion == 'dotacion' %}is-active{% endif %}"
+       href="/centros/{{ centro.id }}/dotacion">DOTACIÓN</a>
+    <a class="tab {% if seccion == 'periodos' %}is-active{% endif %}"
+       href="/centros/{{ centro.id }}/periodos-no-aptos">PERIODOS NO APTOS</a>
+</div>

@@ -6,6 +6,6 @@
 {% set volver_url = "/admin/usuarios" %}
 {% set exportar_url = "/admin/usuarios/exportar" %}
 {% set post_url = "/admin/usuarios/importar" %}
-{% set columnas = ["id", "dni", "empleado_nif", "es_admin", "activo"] %}
+{% set columnas = ["id", "dni", "empleado_nif", "rol", "activo"] %}
 {% include "_partials/import_excel.html" %}
 {% endblock %}

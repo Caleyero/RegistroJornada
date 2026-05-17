@@ -42,6 +42,23 @@ def _dias_o_none(dias: list[int]) -> list[int] | None:
     return norm or None
 
 
+def _resolver_centros_cubribles(
+    db: Session, ids: list[int], centro_propio_id: int,
+) -> list[CentroTrabajo]:
+    """Centros adicionales que el empleado puede cubrir.
+
+    Excluye el centro propio, que ya es cubrible de forma implícita y no
+    debe duplicarse en la tabla puente.
+    """
+    if not ids:
+        return []
+    return (
+        db.query(CentroTrabajo)
+        .filter(CentroTrabajo.id.in_(ids), CentroTrabajo.id != centro_propio_id)
+        .all()
+    )
+
+
 @router.get("", response_class=HTMLResponse, name="empleados_list")
 def list_empleados(request: Request, db: Session = Depends(get_db)):
     empleados = (
@@ -84,6 +101,10 @@ def create_empleado(
     fin_pausa: str = Form(""),
     fin_jornada: str = Form(""),
     dias_laborables_habituales: list[int] = Form(default=[]),
+    admite_horas_extras: bool = Form(False),
+    disponible_desplazamiento: bool = Form(False),
+    dias_vacaciones_anuales: int = Form(30),
+    centros_cubribles: list[int] = Form(default=[]),
 ):
     nif_norm = nif.strip().upper()
     if db.query(Empleado).filter(Empleado.nif == nif_norm).first():
@@ -112,6 +133,12 @@ def create_empleado(
         fin_pausa=_horario_o_none(fin_pausa),
         fin_jornada=_horario_o_none(fin_jornada),
         dias_laborables_habituales=_dias_o_none(dias_laborables_habituales),
+        admite_horas_extras=admite_horas_extras,
+        disponible_desplazamiento=disponible_desplazamiento,
+        dias_vacaciones_anuales=dias_vacaciones_anuales,
+    )
+    empleado.centros_cubribles = _resolver_centros_cubribles(
+        db, centros_cubribles, centro_trabajo_id,
     )
     db.add(empleado)
     db.commit()
@@ -154,6 +181,10 @@ def update_empleado(
     fin_pausa: str = Form(""),
     fin_jornada: str = Form(""),
     dias_laborables_habituales: list[int] = Form(default=[]),
+    admite_horas_extras: bool = Form(False),
+    disponible_desplazamiento: bool = Form(False),
+    dias_vacaciones_anuales: int = Form(30),
+    centros_cubribles: list[int] = Form(default=[]),
 ):
     empleado = db.get(Empleado, empleado_id)
     if not empleado:
@@ -180,6 +211,12 @@ def update_empleado(
     empleado.fin_pausa = _horario_o_none(fin_pausa)
     empleado.fin_jornada = _horario_o_none(fin_jornada)
     empleado.dias_laborables_habituales = _dias_o_none(dias_laborables_habituales)
+    empleado.admite_horas_extras = admite_horas_extras
+    empleado.disponible_desplazamiento = disponible_desplazamiento
+    empleado.dias_vacaciones_anuales = dias_vacaciones_anuales
+    empleado.centros_cubribles = _resolver_centros_cubribles(
+        db, centros_cubribles, centro_trabajo_id,
+    )
     db.commit()
     return RedirectResponse("/empleados", status_code=303)
 

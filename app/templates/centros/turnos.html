@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Turnos · {{ centro.nombre }}{% endblock %}
+
+{% block content %}
+{% set seccion = 'turnos' %}
+{% include "centros/_config_nav.html" %}
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<div class="panel mb-2" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">PLANTILLAS DE TURNO</span>
+    </div>
+    <div class="panel__body">
+        {% if turnos %}
+        <p class="sub mb-2">
+            Edita una fila y pulsa ✓ para guardar. La pausa solo es necesaria
+            en turnos partidos.
+        </p>
+        <table class="list-table">
+            <thead>
+                <tr>
+                    <th style="width:64px;">ORDEN</th>
+                    <th>NOMBRE</th>
+                    <th>INICIO</th>
+                    <th>FIN</th>
+                    <th>PAUSA INI.</th>
+                    <th>PAUSA FIN</th>
+                    <th class="col-center">ACTIVO</th>
+                    <th class="col-actions">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in turnos %}
+                <tr>
+                    <td><input form="turno-{{ t.id }}" type="number" name="orden"
+                               class="input" value="{{ t.orden }}"></td>
+                    <td><input form="turno-{{ t.id }}" name="nombre"
+                               class="input" value="{{ t.nombre }}" required></td>
+                    <td><input form="turno-{{ t.id }}" type="time" name="hora_inicio"
+                               class="input" value="{{ t.hora_inicio }}" required></td>
+                    <td><input form="turno-{{ t.id }}" type="time" name="hora_fin"
+                               class="input" value="{{ t.hora_fin }}" required></td>
+                    <td><input form="turno-{{ t.id }}" type="time" name="inicio_pausa"
+                               class="input" value="{{ t.inicio_pausa or '' }}"></td>
+                    <td><input form="turno-{{ t.id }}" type="time" name="fin_pausa"
+                               class="input" value="{{ t.fin_pausa or '' }}"></td>
+                    <td class="col-center">
+                        <input form="turno-{{ t.id }}" type="checkbox" name="activo"
+                               {% if t.activo %}checked{% endif %}></td>
+                    <td class="col-actions">
+                        <button form="turno-{{ t.id }}" class="icon-btn"
+                                type="submit" title="Guardar cambios">✓</button>
+                        <button form="del-turno-{{ t.id }}" class="icon-btn icon-btn--danger"
+                                type="submit" title="Eliminar">✕</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {# Formularios asociados por el atributo form= (HTML5). #}
+        {% for t in turnos %}
+        <form id="turno-{{ t.id }}" method="post"
+              action="/centros/{{ centro.id }}/turnos/{{ t.id }}/editar"></form>
+        <form id="del-turno-{{ t.id }}" method="post"
+              action="/centros/{{ centro.id }}/turnos/{{ t.id }}/eliminar"
+              onsubmit="return confirm('¿Eliminar el turno {{ t.nombre|e }}?');"></form>
+        {% endfor %}
+        {% else %}
+        <div class="empty">Aún no hay turnos. Crea el primero con el formulario de abajo.</div>
+        {% endif %}
+    </div>
+</div>
+
+<form method="post" action="/centros/{{ centro.id }}/turnos/nuevo"
+      class="panel" style="max-width: 900px;">
+    <div class="panel__head">
+        <span class="panel__title">NUEVO TURNO</span>
+    </div>
+    <div class="panel__body">
+        <div class="grid grid-2 mb-2">
+            <div class="field">
+                <label class="field__label">Nombre <span class="req">*</span></label>
+                <input name="nombre" class="input" required
+                       placeholder="Mañana / Tarde / Partido">
+            </div>
+            <div class="field">
+                <label class="field__label">Orden</label>
+                <input type="number" name="orden" class="input" value="0">
+            </div>
+        </div>
+        <div class="grid grid-4 mb-2">
+            <div class="field">
+                <label class="field__label">Hora inicio <span class="req">*</span></label>
+                <input type="time" name="hora_inicio" class="input" required>
+            </div>
+            <div class="field">
+                <label class="field__label">Hora fin <span class="req">*</span></label>
+                <input type="time" name="hora_fin" class="input" required>
+            </div>
+            <div class="field">
+                <label class="field__label">Inicio pausa</label>
+                <input type="time" name="inicio_pausa" class="input">
+            </div>
+            <div class="field">
+                <label class="field__label">Fin pausa</label>
+                <input type="time" name="fin_pausa" class="input">
+            </div>
+        </div>
+        <label class="check">
+            <input type="checkbox" name="activo" checked> Turno activo
+        </label>
+    </div>
+    <div class="panel__foot">
+        <span class="sub">Las pausas son opcionales</span>
+        <button class="btn btn--primary" type="submit">+ CREAR TURNO</button>
+    </div>
+</form>
+{% endblock %}

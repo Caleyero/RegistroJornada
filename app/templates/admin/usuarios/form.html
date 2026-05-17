@@ -49,12 +49,22 @@
 
         <div class="grid grid-2">
             <div class="field">
-                <label class="check">
-                    <input type="checkbox" name="es_admin"
-                           {% if usuario and usuario.es_admin %}checked{% endif %}>
-                    Es administrador
-                </label>
-                <p class="sub">Acceso completo: empresas, centros, empleados, registros, usuarios.</p>
+                <label class="field__label">Rol</label>
+                <select name="rol" class="select">
+                    <option value="empleado"
+                            {% if usuario is none or usuario.rol == 'empleado' %}selected{% endif %}>
+                        Empleado — solo su propio registro diario
+                    </option>
+                    <option value="rrhh"
+                            {% if usuario and usuario.rol == 'rrhh' %}selected{% endif %}>
+                        RRHH — planificación de turnos y vacaciones
+                    </option>
+                    <option value="admin"
+                            {% if usuario and usuario.rol == 'admin' %}selected{% endif %}>
+                        Administrador — acceso completo
+                    </option>
+                </select>
+                <p class="sub">RRHH planifica turnos y vacaciones de todos los centros; el administrador además gestiona empresas, empleados y usuarios.</p>
             </div>
             <div class="field">
                 <label class="check">

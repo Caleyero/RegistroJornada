@@ -21,7 +21,11 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from sqlalchemy.orm import Session
 
-from app.models import CentroTrabajo, Empleado, Empresa, Usuario
+from app.models import (
+    CentroHorarioApertura, CentroTrabajo, DotacionCentro, Empleado, Empresa,
+    PlantillaTurno, Usuario,
+)
+from app.models.usuario import ROL_ADMIN, ROL_EMPLEADO, ROLES_VALIDOS
 
 
 # --- Constantes ---------------------------------------------------------
@@ -135,6 +139,21 @@ def _dias_to_str(dias: list[int] | None) -> str:
     if not dias:
         return ""
     return ",".join(_DIA_CODIGOS[i] for i in sorted(set(dias)) if 0 <= i <= 6)
+
+
+def _to_dow(v: Any) -> int:
+    """Convierte un valor a día de semana 0..6 (acepta L,M,X,J,V,S,D o 0-6)."""
+    s = _norm_upper(v)
+    if not s:
+        raise ValueError("dia_semana es obligatorio.")
+    if s.isdigit():
+        i = int(s)
+        if 0 <= i <= 6:
+            return i
+        raise ValueError(f"dia_semana fuera de rango: {s}")
+    if s in _DIA_A_INT:
+        return _DIA_A_INT[s]
+    raise ValueError(f"dia_semana no reconocido: {v!r} (use L,M,X,J,V,S,D o 0-6).")
 
 
 def _str_to_dias(v: Any) -> list[int] | None:
@@ -433,6 +452,8 @@ _EMPLEADO_CABECERAS = [
     "horas_semanales", "fecha_alta", "fecha_baja", "activo", "email", "telefono",
     "inicio_jornada", "inicio_pausa", "fin_pausa", "fin_jornada",
     "dias_laborables_habituales",
+    "admite_horas_extras", "disponible_desplazamiento", "dias_vacaciones_anuales",
+    "centros_cubribles",
 ]
 
 
@@ -470,6 +491,10 @@ def exportar_empleados(db: Session) -> bytes:
             e.fin_pausa or "",
             e.fin_jornada or "",
             _dias_to_str(e.dias_laborables_habituales),
+            _bool_to_excel(e.admite_horas_extras),
+            _bool_to_excel(e.disponible_desplazamiento),
+            e.dias_vacaciones_anuales,
+            ", ".join(_centro_referencia(c) for c in e.centros_cubribles),
         ]
         ws.append(fila)
         datos.append(fila)
@@ -503,6 +528,30 @@ def _resolver_centro(db: Session, empresa_id: int, referencia: str) -> CentroTra
     if len(por_nombre) > 1:
         raise ValueError(f"Hay varios centros con nombre {referencia!r} en la empresa.")
     raise ValueError(f"No se encontró el centro {referencia!r} en la empresa.")
+
+
+def _resolver_cubribles(
+    db: Session, empresa_id: int, valor: Any, centro_propio_id: int,
+) -> list[CentroTrabajo]:
+    """Resuelve la lista (separada por comas) de centros cubribles.
+
+    Excluye el centro propio del empleado. Lanza ValueError si alguna
+    referencia no se encuentra.
+    """
+    s = _norm_str(valor)
+    if not s:
+        return []
+    out: list[CentroTrabajo] = []
+    vistos: set[int] = set()
+    for token in s.replace(";", ",").split(","):
+        ref = token.strip()
+        if not ref:
+            continue
+        centro = _resolver_centro(db, empresa_id, ref)
+        if centro.id != centro_propio_id and centro.id not in vistos:
+            out.append(centro)
+            vistos.add(centro.id)
+    return out
 
 
 def importar_empleados(db: Session, file_bytes: bytes) -> ImportResult:
@@ -548,8 +597,23 @@ def importar_empleados(db: Session, file_bytes: bytes) -> ImportResult:
                 fila.get("activo"),
                 default=True if existente is None else existente.activo,
             )
+            admite_he = _to_bool(
+                fila.get("admite_horas_extras"),
+                default=False if existente is None else existente.admite_horas_extras,
+            )
+            disp_desp = _to_bool(
+                fila.get("disponible_desplazamiento"),
+                default=False if existente is None else existente.disponible_desplazamiento,
+            )
+            dvac = _to_numero(fila.get("dias_vacaciones_anuales"))
+            dvac = int(dvac) if dvac is not None else (
+                existente.dias_vacaciones_anuales if existente is not None else 30
+            )
+            cubribles = _resolver_cubribles(
+                db, empresa.id, fila.get("centros_cubribles"), centro.id,
+            )
             if existente is None:
-                db.add(Empleado(
+                nuevo = Empleado(
                     empresa_id=empresa.id,
                     centro_trabajo_id=centro.id,
                     nombre=nombre,
@@ -569,7 +633,12 @@ def importar_empleados(db: Session, file_bytes: bytes) -> ImportResult:
                     fin_pausa=fin_pausa,
                     fin_jornada=fin_jornada,
                     dias_laborables_habituales=dias,
-                ))
+                    admite_horas_extras=bool(admite_he),
+                    disponible_desplazamiento=bool(disp_desp),
+                    dias_vacaciones_anuales=dvac,
+                )
+                nuevo.centros_cubribles = cubribles
+                db.add(nuevo)
                 result.creados += 1
             else:
                 existente.empresa_id = empresa.id
@@ -592,6 +661,10 @@ def importar_empleados(db: Session, file_bytes: bytes) -> ImportResult:
                 existente.fin_pausa = fin_pausa
                 existente.fin_jornada = fin_jornada
                 existente.dias_laborables_habituales = dias
+                existente.admite_horas_extras = bool(admite_he)
+                existente.disponible_desplazamiento = bool(disp_desp)
+                existente.dias_vacaciones_anuales = dvac
+                existente.centros_cubribles = cubribles
                 result.actualizados += 1
         except ValueError as exc:
             result.errores.append((n, str(exc)))
@@ -606,7 +679,7 @@ def importar_empleados(db: Session, file_bytes: bytes) -> ImportResult:
 
 # --- Usuarios -----------------------------------------------------------
 
-_USUARIO_CABECERAS = ["id", "dni", "empleado_nif", "es_admin", "activo"]
+_USUARIO_CABECERAS = ["id", "dni", "empleado_nif", "rol", "activo"]
 
 
 def exportar_usuarios(db: Session) -> bytes:
@@ -621,7 +694,7 @@ def exportar_usuarios(db: Session) -> bytes:
             u.id,
             u.dni,
             u.empleado.nif if u.empleado else "",
-            _bool_to_excel(u.es_admin),
+            u.rol,
             _bool_to_excel(u.activo),
         ]
         ws.append(fila)
@@ -661,10 +734,22 @@ def importar_usuarios(db: Session, file_bytes: bytes) -> ImportResult:
                     )
                 empleado_nifs_usados.add(empleado_nif)
             existente = db.query(Usuario).filter(Usuario.dni == dni).one_or_none()
-            es_admin = _to_bool(
-                fila.get("es_admin"),
-                default=False if existente is None else existente.es_admin,
-            )
+            rol_raw = _norm_lower(fila.get("rol"))
+            if rol_raw:
+                if rol_raw not in ROLES_VALIDOS:
+                    raise ValueError(
+                        f"Rol no reconocido: {rol_raw!r}. Use admin, rrhh o empleado."
+                    )
+                rol = rol_raw
+            else:
+                # Compatibilidad con ficheros antiguos con columna `es_admin`.
+                es_admin_legacy = _to_bool(fila.get("es_admin"), default=None)
+                if es_admin_legacy is not None:
+                    rol = ROL_ADMIN if es_admin_legacy else ROL_EMPLEADO
+                elif existente is not None:
+                    rol = existente.rol
+                else:
+                    rol = ROL_EMPLEADO
             activo = _to_bool(
                 fila.get("activo"),
                 default=True if existente is None else existente.activo,
@@ -679,14 +764,14 @@ def importar_usuarios(db: Session, file_bytes: bytes) -> ImportResult:
                 db.add(Usuario(
                     dni=dni,
                     empleado_id=empleado.id if empleado else None,
-                    es_admin=bool(es_admin),
+                    rol=rol,
                     activo=bool(activo),
                 ))
                 result.creados += 1
             else:
                 existente.dni = dni
                 existente.empleado_id = empleado.id if empleado else None
-                existente.es_admin = bool(es_admin)
+                existente.rol = rol
                 existente.activo = bool(activo)
                 result.actualizados += 1
         except ValueError as exc:
@@ -712,6 +797,306 @@ def importar_usuarios(db: Session, file_bytes: bytes) -> ImportResult:
         ))
         return result
 
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+# --- Horario de apertura de centros ------------------------------------
+
+_HORARIO_CABECERAS = [
+    "empresa_cif", "centro", "dia_semana", "cerrado",
+    "apertura", "inicio_pausa", "fin_pausa", "cierre",
+]
+
+
+def exportar_horarios(db: Session) -> bytes:
+    filas_db = (
+        db.query(CentroHorarioApertura)
+        .join(CentroTrabajo).join(Empresa)
+        .order_by(Empresa.nombre, CentroTrabajo.nombre, CentroHorarioApertura.dia_semana)
+        .all()
+    )
+    wb, ws = _crear_libro("Horarios", _HORARIO_CABECERAS)
+    datos = []
+    for h in filas_db:
+        c = h.centro
+        fila = [
+            c.empresa.cif if c and c.empresa else "",
+            _centro_referencia(c),
+            _DIA_CODIGOS[h.dia_semana],
+            _bool_to_excel(h.cerrado),
+            h.apertura or "",
+            h.inicio_pausa or "",
+            h.fin_pausa or "",
+            h.cierre or "",
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _HORARIO_CABECERAS)
+    return _serializar(wb)
+
+
+def importar_horarios(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(file_bytes, ["empresa_cif", "centro", "dia_semana"])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    vistos: set[tuple[int, int]] = set()
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            empresa = db.query(Empresa).filter(
+                Empresa.cif == _norm_upper(fila.get("empresa_cif"))).one_or_none()
+            if empresa is None:
+                raise ValueError("No existe la empresa indicada.")
+            centro = _resolver_centro(db, empresa.id, _norm_str(fila.get("centro")))
+            dow = _to_dow(fila.get("dia_semana"))
+            if (centro.id, dow) in vistos:
+                raise ValueError("Día de ese centro duplicado en el fichero.")
+            vistos.add((centro.id, dow))
+            cerrado = bool(_to_bool(fila.get("cerrado"), default=False))
+            apertura = None if cerrado else _to_horario(fila.get("apertura"))
+            cierre = None if cerrado else _to_horario(fila.get("cierre"))
+            ini_pausa = None if cerrado else _to_horario(fila.get("inicio_pausa"))
+            fin_pausa = None if cerrado else _to_horario(fila.get("fin_pausa"))
+            existente = (
+                db.query(CentroHorarioApertura)
+                .filter(
+                    CentroHorarioApertura.centro_id == centro.id,
+                    CentroHorarioApertura.dia_semana == dow,
+                )
+                .one_or_none()
+            )
+            if existente is None:
+                db.add(CentroHorarioApertura(
+                    centro_id=centro.id, dia_semana=dow, cerrado=cerrado,
+                    apertura=apertura, cierre=cierre,
+                    inicio_pausa=ini_pausa, fin_pausa=fin_pausa,
+                ))
+                result.creados += 1
+            else:
+                existente.cerrado = cerrado
+                existente.apertura = apertura
+                existente.cierre = cierre
+                existente.inicio_pausa = ini_pausa
+                existente.fin_pausa = fin_pausa
+                result.actualizados += 1
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+# --- Plantillas de turno -----------------------------------------------
+
+_TURNO_CABECERAS = [
+    "empresa_cif", "centro", "nombre", "hora_inicio", "hora_fin",
+    "inicio_pausa", "fin_pausa", "activo", "orden",
+]
+
+
+def exportar_turnos(db: Session) -> bytes:
+    filas_db = (
+        db.query(PlantillaTurno)
+        .join(CentroTrabajo).join(Empresa)
+        .order_by(Empresa.nombre, CentroTrabajo.nombre, PlantillaTurno.orden)
+        .all()
+    )
+    wb, ws = _crear_libro("Turnos", _TURNO_CABECERAS)
+    datos = []
+    for t in filas_db:
+        c = t.centro
+        fila = [
+            c.empresa.cif if c and c.empresa else "",
+            _centro_referencia(c),
+            t.nombre,
+            t.hora_inicio,
+            t.hora_fin,
+            t.inicio_pausa or "",
+            t.fin_pausa or "",
+            _bool_to_excel(t.activo),
+            t.orden,
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _TURNO_CABECERAS)
+    return _serializar(wb)
+
+
+def importar_turnos(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(
+        file_bytes, ["empresa_cif", "centro", "nombre", "hora_inicio", "hora_fin"])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    vistos: set[tuple[int, str]] = set()
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            empresa = db.query(Empresa).filter(
+                Empresa.cif == _norm_upper(fila.get("empresa_cif"))).one_or_none()
+            if empresa is None:
+                raise ValueError("No existe la empresa indicada.")
+            centro = _resolver_centro(db, empresa.id, _norm_str(fila.get("centro")))
+            nombre = _norm_str(fila.get("nombre"))
+            if not nombre:
+                raise ValueError("El nombre del turno es obligatorio.")
+            clave = (centro.id, nombre.lower())
+            if clave in vistos:
+                raise ValueError(f"Turno {nombre!r} duplicado en el fichero.")
+            vistos.add(clave)
+            hi = _to_horario(fila.get("hora_inicio"))
+            hf = _to_horario(fila.get("hora_fin"))
+            if not hi or not hf:
+                raise ValueError("hora_inicio y hora_fin son obligatorias.")
+            ip = _to_horario(fila.get("inicio_pausa"))
+            fp = _to_horario(fila.get("fin_pausa"))
+            orden_v = _to_numero(fila.get("orden"))
+            existente = (
+                db.query(PlantillaTurno)
+                .filter(
+                    PlantillaTurno.centro_id == centro.id,
+                    PlantillaTurno.nombre == nombre,
+                )
+                .one_or_none()
+            )
+            activo = _to_bool(
+                fila.get("activo"),
+                default=True if existente is None else existente.activo,
+            )
+            if existente is None:
+                db.add(PlantillaTurno(
+                    centro_id=centro.id, nombre=nombre,
+                    hora_inicio=hi, hora_fin=hf, inicio_pausa=ip, fin_pausa=fp,
+                    activo=bool(activo), orden=int(orden_v or 0),
+                ))
+                result.creados += 1
+            else:
+                existente.hora_inicio = hi
+                existente.hora_fin = hf
+                existente.inicio_pausa = ip
+                existente.fin_pausa = fp
+                existente.activo = bool(activo)
+                existente.orden = int(orden_v or 0)
+                result.actualizados += 1
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+# --- Dotación -----------------------------------------------------------
+
+_DOTACION_CABECERAS = [
+    "empresa_cif", "centro", "turno", "dia_semana", "minimo", "maximo",
+]
+
+
+def exportar_dotacion(db: Session) -> bytes:
+    filas_db = (
+        db.query(DotacionCentro)
+        .join(CentroTrabajo, CentroTrabajo.id == DotacionCentro.centro_id)
+        .join(Empresa)
+        .order_by(Empresa.nombre, CentroTrabajo.nombre, DotacionCentro.dia_semana)
+        .all()
+    )
+    wb, ws = _crear_libro("Dotacion", _DOTACION_CABECERAS)
+    datos = []
+    for d in filas_db:
+        c = d.centro
+        fila = [
+            c.empresa.cif if c and c.empresa else "",
+            _centro_referencia(c),
+            d.plantilla_turno.nombre if d.plantilla_turno else "",
+            _DIA_CODIGOS[d.dia_semana],
+            d.minimo,
+            d.maximo,
+        ]
+        ws.append(fila)
+        datos.append(fila)
+    _autosize(ws, datos, _DOTACION_CABECERAS)
+    return _serializar(wb)
+
+
+def importar_dotacion(db: Session, file_bytes: bytes) -> ImportResult:
+    result = ImportResult()
+    filas, errores = _leer_filas(
+        file_bytes, ["empresa_cif", "centro", "turno", "dia_semana"])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    vistos: set[tuple[int, int, int]] = set()
+    for fila in filas:
+        n = fila["__row__"]
+        try:
+            empresa = db.query(Empresa).filter(
+                Empresa.cif == _norm_upper(fila.get("empresa_cif"))).one_or_none()
+            if empresa is None:
+                raise ValueError("No existe la empresa indicada.")
+            centro = _resolver_centro(db, empresa.id, _norm_str(fila.get("centro")))
+            nombre_turno = _norm_str(fila.get("turno"))
+            turno = (
+                db.query(PlantillaTurno)
+                .filter(
+                    PlantillaTurno.centro_id == centro.id,
+                    PlantillaTurno.nombre == nombre_turno,
+                )
+                .one_or_none()
+            )
+            if turno is None:
+                raise ValueError(f"No existe el turno {nombre_turno!r} en el centro.")
+            dow = _to_dow(fila.get("dia_semana"))
+            clave = (centro.id, turno.id, dow)
+            if clave in vistos:
+                raise ValueError("Combinación turno/día duplicada en el fichero.")
+            vistos.add(clave)
+            minimo = int(_to_numero(fila.get("minimo")) or 0)
+            maximo = int(_to_numero(fila.get("maximo")) or 0)
+            if minimo < 0 or maximo < 0:
+                raise ValueError("La dotación no puede ser negativa.")
+            if maximo < minimo:
+                raise ValueError("El máximo no puede ser menor que el mínimo.")
+            existente = (
+                db.query(DotacionCentro)
+                .filter(
+                    DotacionCentro.centro_id == centro.id,
+                    DotacionCentro.plantilla_turno_id == turno.id,
+                    DotacionCentro.dia_semana == dow,
+                )
+                .one_or_none()
+            )
+            if existente is None:
+                db.add(DotacionCentro(
+                    centro_id=centro.id, plantilla_turno_id=turno.id,
+                    dia_semana=dow, minimo=minimo, maximo=maximo,
+                ))
+                result.creados += 1
+            else:
+                existente.minimo = minimo
+                existente.maximo = maximo
+                result.actualizados += 1
+        except ValueError as exc:
+            result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
     db.commit()
     result.commit_ok = True
     return result

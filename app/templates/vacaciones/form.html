@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{% if modo == 'editar' %}Editar{% else %}Nuevo{% endif %} periodo{% endblock %}
+
+{% block content %}
+<header class="page__head">
+    <div>
+        <div class="kicker">Vacaciones / {% if modo == 'editar' %}Editar{% else %}Nuevo{% endif %}</div>
+        <h1 class="h1">{% if modo == 'editar' %}Editar periodo{% else %}Nuevo periodo{% endif %}</h1>
+        <div class="sub">Vacaciones, baja o permiso de un empleado.</div>
+    </div>
+    <div class="actions">
+        <a href="/vacaciones" class="btn btn--ghost">← VACACIONES</a>
+    </div>
+</header>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+{% if conflictos %}{% include "_partials/conflictos.html" %}{% endif %}
+
+<form method="post"
+      action="{% if modo == 'editar' %}/vacaciones/{{ periodo_id }}/editar{% else %}/vacaciones/nuevo{% endif %}"
+      class="panel" style="max-width: 720px;">
+    <div class="panel__head">
+        <span class="panel__title">DATOS DEL PERIODO</span>
+    </div>
+    <div class="panel__body">
+        <div class="grid grid-2 mb-2">
+            <div class="field">
+                <label class="field__label">Empleado <span class="req">*</span></label>
+                <select name="empleado_id" class="select" required>
+                    <option value="">— Selecciona —</option>
+                    {% for e in empleados %}
+                    <option value="{{ e.id }}"
+                            {% if e.id == datos.empleado_id %}selected{% endif %}>
+                        {{ e.apellidos }}, {{ e.nombre }}
+                        {%- if e.centro_trabajo %} · {{ e.centro_trabajo.nombre }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label class="field__label">Tipo <span class="req">*</span></label>
+                <select name="tipo" class="select" required>
+                    {% for valor, etiqueta in tipos %}
+                    <option value="{{ valor }}"
+                            {% if valor == datos.tipo %}selected{% endif %}>{{ etiqueta }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-2 mb-2">
+            <div class="field">
+                <label class="field__label">Desde <span class="req">*</span></label>
+                <input type="date" name="fecha_inicio" class="input" required
+                       value="{{ datos.fecha_inicio }}">
+            </div>
+            <div class="field">
+                <label class="field__label">Hasta <span class="req">*</span></label>
+                <input type="date" name="fecha_fin" class="input" required
+                       value="{{ datos.fecha_fin }}">
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="field__label">Observaciones</label>
+            <input name="observaciones" class="input" maxlength="200"
+                   value="{{ datos.observaciones }}">
+        </div>
+
+        {% if permitir_forzar %}
+        <input type="hidden" name="forzar" value="1">
+        {% endif %}
+    </div>
+    <div class="panel__foot">
+        <a href="/vacaciones" class="btn btn--ghost">CANCELAR</a>
+        <button class="btn btn--primary" type="submit">
+            {% if permitir_forzar %}GUARDAR IGNORANDO LOS AVISOS
+            {% elif modo == 'editar' %}GUARDAR CAMBIOS
+            {% else %}CREAR PERIODO{% endif %}
+        </button>
+    </div>
+</form>
+{% endblock %}
