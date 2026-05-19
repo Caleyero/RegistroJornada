@@ -7,6 +7,12 @@
 
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
 
+<style>
+  .hora-campo { display: flex; gap: 4px; align-items: center; }
+  .hora-campo .input { flex: 1 1 auto; min-width: 0; }
+  .hora-limpiar { flex: 0 0 auto; padding: 2px 7px; line-height: 1; }
+</style>
+
 <form method="post" action="/centros/{{ centro.id }}/horario"
       class="panel" style="max-width: 900px;">
     <div class="panel__head">
@@ -41,20 +47,36 @@
                                {% if h.cerrado %}checked{% endif %}>
                     </td>
                     <td>
-                        <input type="time" name="apertura_{{ h.dia_semana }}"
-                               class="input" value="{{ h.apertura or '' }}">
+                        <span class="hora-campo">
+                            <input type="time" name="apertura_{{ h.dia_semana }}"
+                                   class="input" value="{{ h.apertura or '' }}">
+                            <button type="button" class="btn btn--sm hora-limpiar"
+                                    title="Vaciar (--:--)" aria-label="Vaciar hora">✕</button>
+                        </span>
                     </td>
                     <td>
-                        <input type="time" name="inicio_pausa_{{ h.dia_semana }}"
-                               class="input" value="{{ h.inicio_pausa or '' }}">
+                        <span class="hora-campo">
+                            <input type="time" name="inicio_pausa_{{ h.dia_semana }}"
+                                   class="input" value="{{ h.inicio_pausa or '' }}">
+                            <button type="button" class="btn btn--sm hora-limpiar"
+                                    title="Vaciar (--:--)" aria-label="Vaciar hora">✕</button>
+                        </span>
                     </td>
                     <td>
-                        <input type="time" name="fin_pausa_{{ h.dia_semana }}"
-                               class="input" value="{{ h.fin_pausa or '' }}">
+                        <span class="hora-campo">
+                            <input type="time" name="fin_pausa_{{ h.dia_semana }}"
+                                   class="input" value="{{ h.fin_pausa or '' }}">
+                            <button type="button" class="btn btn--sm hora-limpiar"
+                                    title="Vaciar (--:--)" aria-label="Vaciar hora">✕</button>
+                        </span>
                     </td>
                     <td>
-                        <input type="time" name="cierre_{{ h.dia_semana }}"
-                               class="input" value="{{ h.cierre or '' }}">
+                        <span class="hora-campo">
+                            <input type="time" name="cierre_{{ h.dia_semana }}"
+                                   class="input" value="{{ h.cierre or '' }}">
+                            <button type="button" class="btn btn--sm hora-limpiar"
+                                    title="Vaciar (--:--)" aria-label="Vaciar hora">✕</button>
+                        </span>
                     </td>
                     <td class="col-center">
                         {% if h.dia_semana < 6 %}
@@ -106,5 +128,13 @@
     });
   });
 })();
+
+// Botón ✕: vacía el campo de hora de su misma celda y lo deja en "--:--".
+document.querySelectorAll(".hora-limpiar").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const input = btn.closest("td").querySelector("input[type=time]");
+    if (input) input.value = "";
+  });
+});
 </script>
 {% endblock %}
