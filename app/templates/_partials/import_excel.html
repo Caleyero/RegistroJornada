@@ -28,6 +28,23 @@
         (CIF, NIF o DNI según la tabla) se <strong>actualizan</strong>; las nuevas se
         <strong>crean</strong>. Si alguna fila es inválida, no se aplica ningún cambio.</p>
 
+        {% if empresas %}
+        <p>También se admite el Excel de <strong>Google Business</strong> (perfiles de
+        empresa de Google): se detecta automáticamente y cada tienda se empareja con un
+        centro ya existente por su dirección. Para ese formato hay que indicar la empresa
+        de destino.</p>
+
+        <p><label>
+            Empresa de destino (solo para el formato Google Business)
+            <select name="empresa_id">
+                <option value="">— Selecciona una empresa —</option>
+                {% for e in empresas %}
+                <option value="{{ e.id }}">{{ e.nombre }}</option>
+                {% endfor %}
+            </select>
+        </label></p>
+        {% endif %}
+
         <p><label>
             Archivo
             <input type="file" name="archivo" accept=".xlsx" required>
@@ -71,6 +88,30 @@
         </thead>
         <tbody>
             {% for fila, msg in resultado.errores %}
+            <tr>
+                <td>{{ fila if fila > 0 else "—" }}</td>
+                <td>{{ msg }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if resultado.avisos %}
+    <h3>Avisos ({{ resultado.avisos|length }})</h3>
+    <div class="alert" style="background:#fff4d6;color:#6b4e00;">
+        Estas filas no se han aplicado o requieren revisión. El resto de filas
+        sí se ha importado.
+    </div>
+    <table class="list-table">
+        <thead>
+            <tr>
+                <th style="width:80px;">FILA</th>
+                <th>DETALLE</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fila, msg in resultado.avisos %}
             <tr>
                 <td>{{ fila if fila > 0 else "—" }}</td>
                 <td>{{ msg }}</td>

@@ -6,13 +6,15 @@ la dotación y los horarios de apertura. Accesible para RRHH y admin.
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter, Depends, File, Form, HTTPException, Request, UploadFile,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_rrhh
 from app.dependencies import get_db
-from app.models import Usuario
+from app.models import Empresa, Usuario
 from app.services import excel_service
 from app.templating import render
 
@@ -84,10 +86,14 @@ def importar_form(
     current: Usuario = Depends(require_rrhh),
 ):
     titulo, _exp, _imp, columnas = _entidad(entidad)
+    empresas = (
+        db.query(Empresa).order_by(Empresa.nombre).all()
+        if entidad == "horarios" else []
+    )
     return render(
         request, db, "config_excel/importar.html",
         current_user=current, entidad=entidad, titulo_entidad=titulo,
-        columnas=columnas, resultado=None,
+        columnas=columnas, resultado=None, empresas=empresas,
     )
 
 
@@ -98,12 +104,20 @@ async def importar(
     db: Session = Depends(get_db),
     current: Usuario = Depends(require_rrhh),
     archivo: UploadFile = File(...),
+    empresa_id: int | None = Form(None),
 ):
     titulo, _exp, importar_fn, columnas = _entidad(entidad)
     contenido = await archivo.read()
-    resultado = importar_fn(db, contenido)
+    if entidad == "horarios":
+        resultado = excel_service.importar_horarios(db, contenido, empresa_id)
+    else:
+        resultado = importar_fn(db, contenido)
+    empresas = (
+        db.query(Empresa).order_by(Empresa.nombre).all()
+        if entidad == "horarios" else []
+    )
     return render(
         request, db, "config_excel/importar.html",
         current_user=current, entidad=entidad, titulo_entidad=titulo,
-        columnas=columnas, resultado=resultado,
+        columnas=columnas, resultado=resultado, empresas=empresas,
     )

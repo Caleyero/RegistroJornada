@@ -12,6 +12,9 @@ actualiza; si no, se inserta. Cualquier fila inválida aborta el commit.
 
 from __future__ import annotations
 
+import difflib
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from io import BytesIO
@@ -44,7 +47,11 @@ _BOOL_FALSE = {"no", "n", "false", "0", "falso", "f"}
 class ImportResult:
     creados: int = 0
     actualizados: int = 0
+    # Fallos estructurales: abortan el commit (fichero ilegible, columnas, etc.).
     errores: list[tuple[int, str]] = field(default_factory=list)
+    # Incidencias por fila que NO impiden el commit (import parcial): tiendas
+    # no emparejadas, ambiguas, horarios inválidos, emparejamientos dudosos.
+    avisos: list[tuple[int, str]] = field(default_factory=list)
     commit_ok: bool = False
 
     @property
@@ -837,7 +844,222 @@ def exportar_horarios(db: Session) -> bytes:
     return _serializar(wb)
 
 
-def importar_horarios(db: Session, file_bytes: bytes) -> ImportResult:
+# --- Soporte del formato "Google Business" --------------------------------
+#
+# Google Business exporta las ubicaciones en un Excel propio (una fila por
+# tienda, ~80 columnas, horario de cada día como texto). Su "Código de tienda"
+# no se corresponde con el codigo_centro de la app, así que cada tienda se
+# empareja con un centro existente por su dirección (calle + municipio + CP).
+
+# Cabecera (normalizada: minúsculas y sin acentos) → día de semana 0..6.
+_GOOGLE_DIAS = {
+    "horario de lunes": 0,
+    "horario de martes": 1,
+    "horario de miercoles": 2,
+    "horario de jueves": 3,
+    "horario de viernes": 4,
+    "horario de sabado": 5,
+    "horario de domingo": 6,
+}
+
+# Prefijos de tipo de vía (ya sin barras ni puntos) que se descartan al
+# normalizar una dirección para el emparejamiento.
+_PREFIJOS_VIA = {
+    "calle", "c", "avenida", "avda", "avd", "av", "plaza", "pza", "pz", "pl",
+    "paseo", "po", "ps", "carretera", "ctra", "cr", "poligono", "pol", "pg",
+    "ronda", "rda", "camino", "cmno", "travesia", "trav", "urbanizacion",
+    "urb", "barrio", "bo", "lugar", "via",
+}
+
+
+def _strip_acentos(s: str) -> str:
+    """Elimina tildes y otros diacríticos de una cadena."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", s)
+        if not unicodedata.combining(c)
+    )
+
+
+def _norm_cabecera(c: Any) -> str:
+    """Cabecera normalizada: minúsculas, sin acentos y sin espacios sobrantes."""
+    return _strip_acentos(_norm_str(c)).lower()
+
+
+def _cabeceras_excel(file_bytes: bytes) -> list[str]:
+    """Devuelve la primera fila (cabeceras) del Excel, o [] si no se puede leer."""
+    try:
+        wb = load_workbook(BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception:
+        return []
+    for row in wb.active.iter_rows(values_only=True):
+        return [c if c is not None else "" for c in row]
+    return []
+
+
+def _es_formato_google(cabeceras: Iterable[Any]) -> bool:
+    """True si las cabeceras corresponden al export de Google Business."""
+    norm = {_norm_cabecera(c) for c in cabeceras}
+    tiene_dias = len(norm & set(_GOOGLE_DIAS)) >= 3
+    tiene_direccion = "direccion (linea 1)" in norm
+    return tiene_dias and tiene_direccion
+
+
+def _norm_direccion(s: Any) -> tuple[str, str]:
+    """Normaliza una dirección para emparejar: (nombre_via, numero).
+
+    Pasa a minúsculas sin acentos, descarta el prefijo de tipo de vía y separa
+    el número de portal del nombre de la calle.
+    """
+    txt = _strip_acentos(_norm_str(s)).lower()
+    txt = re.sub(r"[^a-z0-9\s]", " ", txt)
+    tokens = txt.split()
+    if not tokens:
+        return "", ""
+    if tokens[0] in _PREFIJOS_VIA:
+        tokens = tokens[1:]
+    numeros = [t for t in tokens if t.isdigit()]
+    calle = " ".join(t for t in tokens if not t.isdigit())
+    return calle, (numeros[-1] if numeros else "")
+
+
+def _parse_horario_google(celda: Any) -> dict:
+    """Convierte una celda de horario de Google a los campos del horario.
+
+    Devuelve un dict con cerrado / apertura / cierre / inicio_pausa / fin_pausa.
+    Lanza ValueError si el texto no se puede representar (3+ tramos, formato
+    desconocido, etc.).
+    """
+    cerrado_dict = {
+        "cerrado": True, "apertura": None, "cierre": None,
+        "inicio_pausa": None, "fin_pausa": None,
+    }
+    s = _norm_str(celda)
+    if not s:
+        return cerrado_dict
+    low = _strip_acentos(s).lower()
+    if low in {"cerrado", "closed"}:
+        return cerrado_dict
+    if "24" in low and ("hora" in low or "hour" in low):
+        return {
+            "cerrado": False, "apertura": "00:00", "cierre": "23:59",
+            "inicio_pausa": None, "fin_pausa": None,
+        }
+    s = s.replace("–", "-").replace("—", "-")
+    tramos: list[tuple[str, str]] = []
+    for trozo in s.split(","):
+        trozo = trozo.strip()
+        if not trozo:
+            continue
+        partes = trozo.split("-")
+        if len(partes) != 2:
+            raise ValueError(f"tramo horario no reconocido: {trozo!r}")
+        ini = _to_horario(partes[0])
+        fin = _to_horario(partes[1])
+        if not ini or not fin:
+            raise ValueError(f"tramo horario no reconocido: {trozo!r}")
+        tramos.append((ini, fin))
+    if len(tramos) == 1:
+        return {
+            "cerrado": False, "apertura": tramos[0][0], "cierre": tramos[0][1],
+            "inicio_pausa": None, "fin_pausa": None,
+        }
+    if len(tramos) == 2:
+        return {
+            "cerrado": False,
+            "apertura": tramos[0][0], "inicio_pausa": tramos[0][1],
+            "fin_pausa": tramos[1][0], "cierre": tramos[1][1],
+        }
+    raise ValueError(
+        f"el horario tiene {len(tramos)} tramos y solo se admiten 1 o 2: {s!r}"
+    )
+
+
+def _emparejar_centro(
+    centros: list[CentroTrabajo], dir1: str, municipio: str, cp: str,
+) -> tuple[CentroTrabajo | None, str]:
+    """Empareja una tienda de Google con un centro por su dirección.
+
+    Devuelve (centro, confianza), con confianza "alta" / "media" cuando hay
+    emparejamiento, "ambigua" si dos centros empatan, o "" si no hay ninguno.
+    """
+    calle_g, num_g = _norm_direccion(dir1)
+    if not calle_g:
+        return None, ""
+    cp_g = _norm_str(cp)
+    muni_g = _strip_acentos(_norm_str(municipio)).lower()
+
+    candidatos: list[tuple[float, float, CentroTrabajo]] = []
+    for c in centros:
+        calle_c, num_c = _norm_direccion(c.direccion)
+        if not calle_c:
+            continue
+        ratio = difflib.SequenceMatcher(None, calle_g, calle_c).ratio()
+        cp_ok = bool(cp_g) and cp_g == _norm_str(c.codigo_postal)
+        muni_c = _strip_acentos(_norm_str(c.ciudad)).lower()
+        muni_ok = bool(muni_g) and bool(muni_c) and (
+            muni_g in muni_c or muni_c in muni_g
+        )
+        num_ok = bool(num_g) and num_g == num_c
+        score = 0.6 * ratio + 0.2 * cp_ok + 0.1 * muni_ok + 0.1 * num_ok
+        candidatos.append((score, ratio, c))
+
+    if not candidatos:
+        return None, ""
+    candidatos.sort(key=lambda t: t[0], reverse=True)
+    mejor_score, mejor_ratio, mejor = candidatos[0]
+    segundo_score = candidatos[1][0] if len(candidatos) > 1 else 0.0
+
+    if mejor_score < 0.55 or mejor_ratio < 0.5:
+        return None, ""
+    if mejor_score - segundo_score < 0.08:
+        return None, "ambigua"
+    if mejor_ratio >= 0.85:
+        return mejor, "alta"
+    return mejor, "media"
+
+
+def _upsert_horario(
+    db: Session, result: ImportResult, centro_id: int, dow: int, h: dict,
+) -> None:
+    """Crea o actualiza el horario de apertura de (centro, día)."""
+    existente = (
+        db.query(CentroHorarioApertura)
+        .filter(
+            CentroHorarioApertura.centro_id == centro_id,
+            CentroHorarioApertura.dia_semana == dow,
+        )
+        .one_or_none()
+    )
+    if existente is None:
+        db.add(CentroHorarioApertura(
+            centro_id=centro_id, dia_semana=dow, cerrado=h["cerrado"],
+            apertura=h["apertura"], cierre=h["cierre"],
+            inicio_pausa=h["inicio_pausa"], fin_pausa=h["fin_pausa"],
+        ))
+        result.creados += 1
+    else:
+        existente.cerrado = h["cerrado"]
+        existente.apertura = h["apertura"]
+        existente.cierre = h["cierre"]
+        existente.inicio_pausa = h["inicio_pausa"]
+        existente.fin_pausa = h["fin_pausa"]
+        result.actualizados += 1
+
+
+def importar_horarios(
+    db: Session, file_bytes: bytes, empresa_id: int | None = None,
+) -> ImportResult:
+    """Importa horarios de apertura.
+
+    Detecta automáticamente el formato del fichero: el Excel propio de la app
+    o el export de Google Business. `empresa_id` solo se usa en el segundo.
+    """
+    if _es_formato_google(_cabeceras_excel(file_bytes)):
+        return _importar_horarios_google(db, file_bytes, empresa_id)
+    return _importar_horarios_estandar(db, file_bytes)
+
+
+def _importar_horarios_estandar(db: Session, file_bytes: bytes) -> ImportResult:
     result = ImportResult()
     filas, errores = _leer_filas(file_bytes, ["empresa_cif", "centro", "dia_semana"])
     result.errores.extend(errores)
@@ -862,30 +1084,107 @@ def importar_horarios(db: Session, file_bytes: bytes) -> ImportResult:
             cierre = None if cerrado else _to_horario(fila.get("cierre"))
             ini_pausa = None if cerrado else _to_horario(fila.get("inicio_pausa"))
             fin_pausa = None if cerrado else _to_horario(fila.get("fin_pausa"))
-            existente = (
-                db.query(CentroHorarioApertura)
-                .filter(
-                    CentroHorarioApertura.centro_id == centro.id,
-                    CentroHorarioApertura.dia_semana == dow,
-                )
-                .one_or_none()
-            )
-            if existente is None:
-                db.add(CentroHorarioApertura(
-                    centro_id=centro.id, dia_semana=dow, cerrado=cerrado,
-                    apertura=apertura, cierre=cierre,
-                    inicio_pausa=ini_pausa, fin_pausa=fin_pausa,
-                ))
-                result.creados += 1
-            else:
-                existente.cerrado = cerrado
-                existente.apertura = apertura
-                existente.cierre = cierre
-                existente.inicio_pausa = ini_pausa
-                existente.fin_pausa = fin_pausa
-                result.actualizados += 1
+            _upsert_horario(db, result, centro.id, dow, {
+                "cerrado": cerrado, "apertura": apertura, "cierre": cierre,
+                "inicio_pausa": ini_pausa, "fin_pausa": fin_pausa,
+            })
         except ValueError as exc:
             result.errores.append((n, str(exc)))
+
+    if result.errores:
+        db.rollback()
+        return result
+    db.commit()
+    result.commit_ok = True
+    return result
+
+
+def _importar_horarios_google(
+    db: Session, file_bytes: bytes, empresa_id: int | None,
+) -> ImportResult:
+    result = ImportResult()
+    if not empresa_id:
+        result.errores.append((
+            0,
+            "Selecciona la empresa de destino para importar el formato "
+            "Google Business.",
+        ))
+        return result
+    empresa = db.get(Empresa, empresa_id)
+    if empresa is None:
+        result.errores.append((0, "La empresa seleccionada no existe."))
+        return result
+
+    filas, errores = _leer_filas(file_bytes, [])
+    result.errores.extend(errores)
+    if errores:
+        return result
+
+    centros = (
+        db.query(CentroTrabajo)
+        .filter(
+            CentroTrabajo.empresa_id == empresa_id,
+            CentroTrabajo.activo == True,  # noqa: E712
+        )
+        .all()
+    )
+    if not centros:
+        result.errores.append((
+            0, f"La empresa «{empresa.nombre}» no tiene centros activos.",
+        ))
+        return result
+
+    centros_usados: set[int] = set()
+    for fila_raw in filas:
+        n = fila_raw["__row__"]
+        # Reescribe las claves sin acentos para acceder a las columnas Google.
+        fila = {
+            (_norm_cabecera(k) if isinstance(k, str) else k): v
+            for k, v in fila_raw.items()
+        }
+        dir1 = _norm_str(fila.get("direccion (linea 1)"))
+        municipio = _norm_str(fila.get("municipio"))
+        cp = _norm_str(fila.get("codigo postal"))
+        if not dir1:
+            result.avisos.append((n, "Tienda sin dirección; no se empareja."))
+            continue
+
+        centro, confianza = _emparejar_centro(centros, dir1, municipio, cp)
+        if centro is None:
+            ubic = f"«{dir1}»" + (f" ({municipio})" if municipio else "")
+            if confianza == "ambigua":
+                result.avisos.append((
+                    n, f"{ubic} coincide con varios centros; no se empareja.",
+                ))
+            else:
+                result.avisos.append((
+                    n, f"No se encontró ningún centro para {ubic}.",
+                ))
+            continue
+        if centro.id in centros_usados:
+            result.avisos.append((
+                n,
+                f"El centro «{centro.nombre}» ya se emparejó con otra tienda "
+                f"del fichero; se omite «{dir1}».",
+            ))
+            continue
+        centros_usados.add(centro.id)
+        if confianza == "media":
+            result.avisos.append((
+                n,
+                f"«{dir1}» se ha emparejado con el centro «{centro.nombre}» "
+                f"— revisa que sea correcto.",
+            ))
+
+        for cabecera, dow in _GOOGLE_DIAS.items():
+            try:
+                horario = _parse_horario_google(fila.get(cabecera))
+            except ValueError as exc:
+                result.avisos.append((
+                    n, f"{centro.nombre} — {_DIA_CODIGOS[dow]}: {exc}",
+                ))
+                continue
+            _upsert_horario(db, result, centro.id, dow, horario)
 
     if result.errores:
         db.rollback()
