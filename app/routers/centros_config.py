@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_rrhh
 from app.dependencies import get_db
-from app.models import CentroTrabajo, PeriodoNoApto, PlantillaTurno, Usuario
+from app.models import (
+    CentroHorarioApertura, CentroTrabajo, PeriodoNoApto, PlantillaTurno, Usuario,
+)
 from app.services import turnos_service
 from app.templating import render
 
@@ -81,10 +83,23 @@ async def horario_guardar(
         turnos_service.guardar_horario(db, centro.id, datos)
     except ValueError as exc:
         db.rollback()
+        # Conserva lo que el usuario tecleó para que pueda corregir el error
+        # sin perder el resto de cambios del formulario.
+        horario = [
+            CentroHorarioApertura(
+                centro_id=centro.id, dia_semana=dow,
+                cerrado=datos[dow]["cerrado"],
+                apertura=datos[dow]["apertura"] or None,
+                inicio_pausa=datos[dow]["inicio_pausa"] or None,
+                fin_pausa=datos[dow]["fin_pausa"] or None,
+                cierre=datos[dow]["cierre"] or None,
+            )
+            for dow in range(7)
+        ]
         return render(
             request, db, "centros/horario.html",
             current_user=current, centro=centro,
-            horario=turnos_service.cargar_horario(db, centro.id),
+            horario=horario,
             dias=turnos_service.DIAS_SEMANA, error=str(exc),
         )
     return RedirectResponse(f"/centros/{centro.id}/horario", status_code=303)

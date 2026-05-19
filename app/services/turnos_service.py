@@ -72,14 +72,21 @@ def guardar_horario(
         cerrado = bool(d.get("cerrado"))
         apertura = cierre = inicio_pausa = fin_pausa = None
         if not cerrado:
-            apertura = _validar_hhmm(d.get("apertura") or "", f"apertura {dia}")
-            cierre = _validar_hhmm(d.get("cierre") or "", f"cierre {dia}")
+            ap_raw = (d.get("apertura") or "").strip()
+            ci_raw = (d.get("cierre") or "").strip()
+            ini_raw = (d.get("inicio_pausa") or "").strip()
+            fin_raw = (d.get("fin_pausa") or "").strip()
+            # Día que solo abre por la mañana: si se rellena la apertura y la
+            # hora de cierre del mediodía, pero no la reapertura ni el cierre
+            # del día, se interpreta como jornada continua hasta esa hora.
+            if ap_raw and ini_raw and not fin_raw and not ci_raw:
+                ci_raw, ini_raw = ini_raw, ""
+            apertura = _validar_hhmm(ap_raw, f"apertura {dia}")
+            cierre = _validar_hhmm(ci_raw, f"cierre {dia}")
             if _to_minutos(cierre) <= _to_minutos(apertura):
                 raise ValueError(
                     f"{dia}: la hora de cierre debe ser posterior a la de apertura."
                 )
-            ini_raw = (d.get("inicio_pausa") or "").strip()
-            fin_raw = (d.get("fin_pausa") or "").strip()
             if ini_raw or fin_raw:
                 if not (ini_raw and fin_raw):
                     raise ValueError(

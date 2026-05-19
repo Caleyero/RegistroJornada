@@ -11,6 +11,14 @@
   .hora-campo { display: flex; gap: 4px; align-items: center; }
   .hora-campo .input { flex: 1 1 auto; min-width: 0; }
   .hora-limpiar { flex: 0 0 auto; padding: 2px 7px; line-height: 1; }
+  .total-semanal td {
+      text-align: right;
+      padding: 12px 10px;
+      background: #f3f6fb;
+      border-top: 2px solid #d6deea;
+  }
+  .total-semanal__label { font-weight: 600; color: #555; }
+  .total-semanal__valor { font-size: 1.7rem; margin-left: 10px; }
 </style>
 
 <form method="post" action="/centros/{{ centro.id }}/horario"
@@ -20,11 +28,14 @@
     </div>
     <div class="panel__body">
         <p class="sub mb-2">
-            Marca «cerrado» los días que el centro no abre. Para tiendas con
-            jornada partida, rellena el cierre y la reapertura del mediodía;
-            déjalos vacíos si el centro abre de forma continua. El botón
-            <strong>↧ Copiar</strong> de cada día lleva sus valores a todos
-            los días siguientes — rellena el lunes y cópialo a la semana.
+            Marca «cerrado» los días que el centro no abre. Para una jornada
+            partida, rellena las cuatro horas. Para una jornada continua
+            —incluido un día que solo abre por la mañana— rellena
+            <strong>ABRE</strong> y <strong>CIERRE</strong> y deja vacíos los
+            dos campos del mediodía (usa el botón <strong>✕</strong> para
+            vaciar un campo). El botón <strong>↧ Copiar</strong> de cada día
+            lleva sus valores a todos los días siguientes — rellena el lunes y
+            cópialo a la semana.
         </p>
         <table class="list-table">
             <thead>
@@ -89,6 +100,12 @@
                     </td>
                 </tr>
                 {% endfor %}
+                <tr class="total-semanal">
+                    <td colspan="7">
+                        <span class="total-semanal__label">TOTAL DE APERTURA SEMANAL:</span>
+                        <strong id="total-horas" class="total-semanal__valor">—</strong>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -125,6 +142,7 @@
       const dow = parseInt(btn.dataset.copiar, 10);
       const fila = leerDia(dow);
       for (let d = dow + 1; d <= 6; d++) aplicarDia(d, fila);
+      if (window.recalcularTotalHorario) window.recalcularTotalHorario();
     });
   });
 })();
@@ -134,7 +152,47 @@ document.querySelectorAll(".hora-limpiar").forEach(btn => {
   btn.addEventListener("click", () => {
     const input = btn.closest("td").querySelector("input[type=time]");
     if (input) input.value = "";
+    if (window.recalcularTotalHorario) window.recalcularTotalHorario();
   });
 });
+
+// Total de horas de apertura de la semana, recalculado en vivo al editar.
+(function () {
+  function aMinutos(v) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec((v || "").trim());
+    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+  }
+
+  function minutosDia(dow) {
+    if (document.querySelector(`[name=cerrado_${dow}]`).checked) return 0;
+    let ap = aMinutos(document.querySelector(`[name=apertura_${dow}]`).value);
+    let ci = aMinutos(document.querySelector(`[name=cierre_${dow}]`).value);
+    let ip = aMinutos(document.querySelector(`[name=inicio_pausa_${dow}]`).value);
+    let fp = aMinutos(document.querySelector(`[name=fin_pausa_${dow}]`).value);
+    // Misma regla que el servidor: abre + cierra-mediodía sin tarde => continua.
+    if (ap !== null && ip !== null && fp === null && ci === null) {
+      ci = ip;
+      ip = null;
+    }
+    if (ap === null || ci === null || ci <= ap) return 0;
+    let total = ci - ap;
+    if (ip !== null && fp !== null && ip < fp) total -= (fp - ip);
+    return total;
+  }
+
+  function recalcular() {
+    let total = 0;
+    for (let d = 0; d <= 6; d++) total += minutosDia(d);
+    const h = Math.floor(total / 60), m = total % 60;
+    document.getElementById("total-horas").textContent =
+      m ? `${h} h ${m} min` : `${h} h`;
+  }
+
+  const tabla = document.querySelector("table.list-table");
+  tabla.addEventListener("input", recalcular);
+  tabla.addEventListener("change", recalcular);
+  window.recalcularTotalHorario = recalcular;
+  recalcular();
+})();
 </script>
 {% endblock %}
